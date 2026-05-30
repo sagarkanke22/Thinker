@@ -1,0 +1,110 @@
+/* LogicLive Editor — 3-pane layout.
+   Header row across the top; tree | center | chat columns below.
+   Center pane stacks CodeEditor + LivePreview vertically. */
+
+:root {
+  --bg:           #f7f8fa;
+  --pane-bg:      #ffffff;
+  --border:       #e1e4e8;
+  --muted:        #6a737d;
+  --muted-2:      #b1b8c1;
+  --text:         #24292e;
+  --accent:       #1f6feb;
+  --header-bg:    #1a1a1a;
+  --header-fg:    #eaeaea;
+}
+
+.editor-shell {
+  display: grid;
+  grid-template-columns: 20% 55% 25%;
+  grid-template-rows: 40px 1fr;
+  grid-template-areas:
+    "header header header"
+    "tree   center chat";
+  height: 100vh;
+  width: 100vw;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.editor-header {
+  grid-area: header;
+  background: var(--header-bg);
+  color: var(--header-fg);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 16px;
+}
+
+.editor-header-title {
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.editor-header-screen {
+  color: #aaa;
+  font-size: 12px;
+}
+
+.editor-pane {
+  background: var(--pane-bg);
+  border-left: 1px solid var(--border);
+  overflow: auto;
+  min-height: 0;
+}
+
+.editor-tree {
+  grid-area: tree;
+  border-left: none;
+}
+
+.editor-center {
+  grid-area: center;
+  display: flex;
+  flex-direction: column;
+  background: var(--pane-bg);
+  border-left: 1px solid var(--border);
+}
+
+.editor-code {
+  flex: 1 1 50%;
+  border-bottom: 1px solid var(--border);
+  min-height: 0;
+  overflow: auto;
+}
+
+.editor-preview {
+  flex: 1 1 50%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.editor-chat {
+  grid-area: chat;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin: 0 0 8px;
+}
+
+.editor-stub {
+  color: var(--muted-2);
+  font-style: italic;
+  font-size: 13px;
+}
+
+.editor-pad {
+  padding: 12px;
+  height: 100%;
+  box-sizing: border-box;
+}

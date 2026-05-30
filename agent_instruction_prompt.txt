@@ -1,0 +1,111 @@
+
+STEP 1 — DETECT INTENT
+Classify the user message into exactly one of:
+  INITIALIZATION / EXECUTION / LEARNING / REOPEN / DEFAULT
+
+STEP 2 — LOAD REQUIRED FILES (mandatory per intent)
+
+For INITIALIZATION:
+  - Read IntegratedPlanning/system_rules_and_learning.txt
+    → Check all R*, C*, L* rules that apply to the planned task
+    → Use learnings to inform the context and flow plan before writing them
+
+For EXECUTION:
+  - Read IntegratedPlanning/active_task_state.txt
+  - Read the CONTEXT FILE listed in active_task_state.txt
+  - Read IntegratedPlanning/system_rules_and_learning.txt
+    → Before writing any code, scan for matching rules (R*, C*, L*, T*)
+    → Apply KNOWLEDGE-FIRST VALIDATION (see below)
+  - Read the FLOW FILE to identify the current step
+
+For REOPEN:
+  - Read IntegratedPlanning/active_task_state.txt
+  - Read the CONTEXT FILE to understand current feature state
+  - Read the FLOW FILE to avoid duplicating existing steps
+  - Read IntegratedPlanning/system_rules_and_learning.txt
+    → Inform the new steps with past learnings
+
+For LEARNING:
+  - Read IntegratedPlanning/active_task_state.txt
+  - Read the CONTEXT FILE and FLOW FILE
+  - Read IntegratedPlanning/system_rules_and_learning.txt
+    → Check for duplicates before appending any new learning
+
+For DEFAULT:
+  - Read IntegratedPlanning/active_task_state.txt if available
+  - Answer the question or ask for clarification
+
+---
+
+KNOWLEDGE-FIRST VALIDATION (apply before every code change):
+
+When a matching rule or learning is found in system_rules_and_learning.txt
+or the task context file:
+
+  1. STATE the knowledge: '[From L012] PlotGrids needs dynamic key when data updates externally'
+  2. VERIFY it applies: Read the actual code to confirm the pattern matches the current situation
+  3. If it matches → apply with confidence. No re-investigation needed.
+  4. If it partially matches → note the delta, apply what fits, investigate only the gap
+  5. If no match → investigate normally, then capture a new learning after
+
+This means:
+  - Knowledge speeds up validation — not blind application
+  - Always cite the source when applying a known rule
+  - Never re-debug something already solved and documented
+  - If the fix from knowledge works → great. If not → update the learning with the new finding.
+
+---
+
+STEP 3 — EXECUTE INTENT RULES
+
+INITIALIZATION:
+  - Gather all required task info
+  - If any info missing → ask, do NOT proceed
+  - Present full proposed context + flow plan as text in chat
+  - Say: 'Please confirm to proceed with initialization.'
+  - STOP. Do not create files until confirmed.
+
+EXECUTION:
+  - Execute EXACTLY ONE step from the flow file
+  - Apply knowledge-first validation before writing code
+  - Validate after the step
+  - Update active_task_state.txt
+  - Append brief context update to task_<name>_context.txt
+  - STOP. Report what was done, cite any knowledge used, and state the next step.
+  - Do NOT proceed automatically. Wait for next 'execute flow'.
+  - TASK COMPLETION GATE: If final step done:
+    1. Ask: 'Please confirm — did you test this in the UI? What worked and what did not?'
+    2. STOP. Wait for testing confirmation.
+    3. After confirmed: say 'Please say derive learning to capture learnings.'
+
+LEARNING:
+  - Extract root causes from task outcome
+  - Classify each: TASK / FLOW / GENERIC
+  - Check system_rules_and_learning.txt for duplicates
+  - Append GENERIC → system_rules_and_learning.txt
+  - Append TASK → task_<name>_context.txt
+  - Append FLOW → task_<name>_flow.txt
+  - Reject vague learnings — must include root cause
+  - STOP. Report what was written and where.
+
+REOPEN:
+  - Present proposed new fix steps as text
+  - Wait for user confirmation before writing anything
+  - On confirm: append steps to flow file (never overwrite)
+  - Update active_task_state.txt to IN PROGRESS
+  - STOP.
+
+DEFAULT:
+  - If unclear → ask for clarification
+  - If general question → answer normally
+
+CRITICAL RULES (never break):
+  - One step per iteration. No batching.
+  - Never modify code without EXECUTION intent.
+  - Never create task files without user confirmation.
+  - Never mark COMPLETE without user testing confirmation.
+  - Never skip learning phase after task completion.
+  - Always read system_rules_and_learning.txt before writing code.
+  - Always read task context file before executing a step.
+  - Always cite knowledge source when applying a known rule: '[From L012]'
+  - Stop on any failure. Do not continue past errors.

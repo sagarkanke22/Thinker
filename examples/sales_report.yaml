@@ -1,0 +1,168 @@
+# LogicLive demo screen — declarative source for `sales_report`.
+#
+# Loaded by examples/seed.py. Edit this file to change the demo widgets,
+# then re-run `python examples/seed.py` to apply.
+#
+# [C014] Uses canonical SDUI vocab.
+# [C015] base_config is dev-only (this file). logic_code can be edited
+#        live in the in-app editor — those changes go to the DB, not back
+#        to this file. Treat the YAML as the "initial seed", not source
+#        of truth post-edit.
+# [C019] Every logic_code ends with explicit `return {...}`.
+
+screen_id: sales_report
+
+widgets:
+  # ── inputs ────────────────────────────────────────────────────
+  - widget_id: input.start_date
+    base_config:
+      type: input
+      props:
+        label: "Start date"
+        kind: date
+        default: "2026-05-01"
+    logic_code: null
+
+  - widget_id: input.end_date
+    base_config:
+      type: input
+      props:
+        label: "End date"
+        kind: date
+        default: "2026-05-15"
+    logic_code: null
+
+  # ── KPI text — sums revenue in the filtered window ───────────
+  - widget_id: text.total_kpi
+    base_config:
+      type: text
+      props:
+        style:
+          fontSize: 24
+          fontWeight: 700
+          color: "#1f6feb"
+          margin: "12px 0 4px"
+    logic_code: |
+      def render(params):
+          # Embedded sample orders — start_date / end_date filter this.
+          orders = [
+              {"date": "2026-05-01", "product": "Coke 500ml",       "qty": 12, "revenue":  600},
+              {"date": "2026-05-02", "product": "Sprite 500ml",     "qty":  8, "revenue":  400},
+              {"date": "2026-05-02", "product": "Coke 500ml",       "qty": 14, "revenue":  700},
+              {"date": "2026-05-03", "product": "Fanta 500ml",      "qty":  9, "revenue":  450},
+              {"date": "2026-05-04", "product": "Coke Zero 500ml",  "qty": 11, "revenue":  550},
+              {"date": "2026-05-05", "product": "Coke 500ml",       "qty": 18, "revenue":  900},
+              {"date": "2026-05-06", "product": "Sprite 500ml",     "qty":  7, "revenue":  350},
+              {"date": "2026-05-07", "product": "Fanta 500ml",      "qty":  6, "revenue":  300},
+              {"date": "2026-05-08", "product": "Coke 500ml",       "qty": 16, "revenue":  800},
+              {"date": "2026-05-09", "product": "Coke Zero 500ml",  "qty": 13, "revenue":  650},
+              {"date": "2026-05-10", "product": "Sprite 500ml",     "qty":  9, "revenue":  450},
+              {"date": "2026-05-11", "product": "Coke 500ml",       "qty": 20, "revenue": 1000},
+              {"date": "2026-05-13", "product": "Fanta 500ml",      "qty":  8, "revenue":  400},
+              {"date": "2026-05-15", "product": "Coke Zero 500ml",  "qty": 15, "revenue":  750},
+              {"date": "2026-05-18", "product": "Coke 500ml",       "qty": 17, "revenue":  850},
+              {"date": "2026-05-22", "product": "Sprite 500ml",     "qty": 10, "revenue":  500},
+              {"date": "2026-05-28", "product": "Fanta 500ml",      "qty": 11, "revenue":  550},
+          ]
+          start = params.get("start_date") or "2026-05-01"
+          end   = params.get("end_date")   or "2026-05-31"
+          filtered = [o for o in orders if start <= o["date"] <= end]
+          total = sum(o["revenue"] for o in filtered)
+          return {"children": f"Revenue ({start} → {end}): {total:,}"}
+
+  # ── results table — same dataset, grouped by product ─────────
+  - widget_id: table.results
+    base_config:
+      type: table
+      props:
+        columns: ["product", "qty", "revenue"]
+    logic_code: |
+      def render(params):
+          orders = [
+              {"date": "2026-05-01", "product": "Coke 500ml",       "qty": 12, "revenue":  600},
+              {"date": "2026-05-02", "product": "Sprite 500ml",     "qty":  8, "revenue":  400},
+              {"date": "2026-05-02", "product": "Coke 500ml",       "qty": 14, "revenue":  700},
+              {"date": "2026-05-03", "product": "Fanta 500ml",      "qty":  9, "revenue":  450},
+              {"date": "2026-05-04", "product": "Coke Zero 500ml",  "qty": 11, "revenue":  550},
+              {"date": "2026-05-05", "product": "Coke 500ml",       "qty": 18, "revenue":  900},
+              {"date": "2026-05-06", "product": "Sprite 500ml",     "qty":  7, "revenue":  350},
+              {"date": "2026-05-07", "product": "Fanta 500ml",      "qty":  6, "revenue":  300},
+              {"date": "2026-05-08", "product": "Coke 500ml",       "qty": 16, "revenue":  800},
+              {"date": "2026-05-09", "product": "Coke Zero 500ml",  "qty": 13, "revenue":  650},
+              {"date": "2026-05-10", "product": "Sprite 500ml",     "qty":  9, "revenue":  450},
+              {"date": "2026-05-11", "product": "Coke 500ml",       "qty": 20, "revenue": 1000},
+              {"date": "2026-05-13", "product": "Fanta 500ml",      "qty":  8, "revenue":  400},
+              {"date": "2026-05-15", "product": "Coke Zero 500ml",  "qty": 15, "revenue":  750},
+              {"date": "2026-05-18", "product": "Coke 500ml",       "qty": 17, "revenue":  850},
+              {"date": "2026-05-22", "product": "Sprite 500ml",     "qty": 10, "revenue":  500},
+              {"date": "2026-05-28", "product": "Fanta 500ml",      "qty": 11, "revenue":  550},
+          ]
+          start = params.get("start_date") or "2026-05-01"
+          end   = params.get("end_date")   or "2026-05-31"
+          filtered = [o for o in orders if start <= o["date"] <= end]
+          # groupby product
+          by_product = {}
+          for o in filtered:
+              p = o["product"]
+              if p not in by_product:
+                  by_product[p] = {"product": p, "qty": 0, "revenue": 0}
+              by_product[p]["qty"]     += o["qty"]
+              by_product[p]["revenue"] += o["revenue"]
+          rows = sorted(by_product.values(), key=lambda r: -r["revenue"])
+          # mark the leader row green
+          if rows:
+              rows[0]["_style"] = {"background": "#e6fff0"}
+          return {
+              "data": rows,
+              "props": {"footer": f"{len(rows)} products  ·  {len(filtered)} orders"},
+          }
+
+  # ── revenue chart — Plotly bar across the same window ────────
+  - widget_id: chart.revenue
+    base_config:
+      type: chart
+      props:
+        title: "Revenue by product"
+    logic_code: |
+      def render(params):
+          orders = [
+              {"date": "2026-05-01", "product": "Coke 500ml",       "qty": 12, "revenue":  600},
+              {"date": "2026-05-02", "product": "Sprite 500ml",     "qty":  8, "revenue":  400},
+              {"date": "2026-05-02", "product": "Coke 500ml",       "qty": 14, "revenue":  700},
+              {"date": "2026-05-03", "product": "Fanta 500ml",      "qty":  9, "revenue":  450},
+              {"date": "2026-05-04", "product": "Coke Zero 500ml",  "qty": 11, "revenue":  550},
+              {"date": "2026-05-05", "product": "Coke 500ml",       "qty": 18, "revenue":  900},
+              {"date": "2026-05-06", "product": "Sprite 500ml",     "qty":  7, "revenue":  350},
+              {"date": "2026-05-07", "product": "Fanta 500ml",      "qty":  6, "revenue":  300},
+              {"date": "2026-05-08", "product": "Coke 500ml",       "qty": 16, "revenue":  800},
+              {"date": "2026-05-09", "product": "Coke Zero 500ml",  "qty": 13, "revenue":  650},
+              {"date": "2026-05-10", "product": "Sprite 500ml",     "qty":  9, "revenue":  450},
+              {"date": "2026-05-11", "product": "Coke 500ml",       "qty": 20, "revenue": 1000},
+              {"date": "2026-05-13", "product": "Fanta 500ml",      "qty":  8, "revenue":  400},
+              {"date": "2026-05-15", "product": "Coke Zero 500ml",  "qty": 15, "revenue":  750},
+              {"date": "2026-05-18", "product": "Coke 500ml",       "qty": 17, "revenue":  850},
+              {"date": "2026-05-22", "product": "Sprite 500ml",     "qty": 10, "revenue":  500},
+              {"date": "2026-05-28", "product": "Fanta 500ml",      "qty": 11, "revenue":  550},
+          ]
+          start = params.get("start_date") or "2026-05-01"
+          end   = params.get("end_date")   or "2026-05-31"
+          filtered = [o for o in orders if start <= o["date"] <= end]
+          by_product = {}
+          for o in filtered:
+              by_product[o["product"]] = by_product.get(o["product"], 0) + o["revenue"]
+          items = sorted(by_product.items(), key=lambda kv: -kv[1])
+          return {
+              "data": [{
+                  "type": "bar",
+                  "x": [k for k, _ in items],
+                  "y": [v for _, v in items],
+                  "marker": {"color": "#1f6feb"},
+              }],
+              "props": {
+                  "layout": {
+                      "title": f"Revenue by product ({start} → {end})",
+                      "margin": {"l": 60, "r": 20, "t": 40, "b": 80},
+                      "yaxis": {"title": "Revenue"},
+                  }
+              },
+          }

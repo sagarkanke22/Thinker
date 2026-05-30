@@ -1,0 +1,27 @@
+═══════════════════════════════════════════════════════
+ACTIVE TASK STATE
+═══════════════════════════════════════════════════════
+
+CURRENT TASK NAME   : understand_damco_task
+CONTEXT FILE        : task_understand_damco_task_context.txt
+FLOW FILE           : task_understand_damco_task_flow.txt
+CURRENT PHASE       : EXECUTION
+CURRENT STEP        : 23
+LAST COMPLETED STEP : 22
+STATUS              : IN PROGRESS
+NOTE                : Step 23 docs done (README polish + rehearsal + email); external pieces (test, GitHub push, video, send email) pending user. DO NOT mark COMPLETE until user testing confirmation per R010.
+DEFERRED LEARNING   : NO
+BLAST RADIUS        : 26 files (NEW) under /home/sagar123/Thinker/{logiclive,frontend,examples,tests}/ — see task_understand_damco_task_flow.txt for full list
+LAST ERROR CLASS    : NONE
+LAST DEBUG ENTRY    : NONE
+
+LAST UPDATED        : 2026-05-30
+LOCKED PROBLEM      : LogicLive — Server-Driven UI platform for internal tools (DB-resident Python logic editable by hand or scoped AI chat)
+STACK               : Python 3.11+ / FastAPI / SQLite / React 18 / Vite / Monaco / react-plotly.js / Ollama (qwen2.5-coder:7b)
+
+PREVIOUS TASK (paused, not completed):
+  actual_sales_col_order — was IN PROGRESS at Step 1
+  BLAST RADIUS: view_supply_plan.py
+  Re-activate by running: init task → reuse those files
+
+═══════════════════════════════════════════════════════

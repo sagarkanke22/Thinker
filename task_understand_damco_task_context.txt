@@ -1,0 +1,1415 @@
+═══════════════════════════════════════════════════════
+TASK CONTEXT — understand_damco_task
+═══════════════════════════════════════════════════════
+
+TASK NAME       : understand_damco_task
+REFERENCE FILE  : /home/sagar123/Thinker/damco_task.txt
+DESCRIPTION     : Read the Damco Builder Challenge brief and produce a clear
+                  summary of what's being asked, evaluation criteria, and
+                  submission requirements. Identify ambiguities / open
+                  decisions the user must make.
+
+═══════════════════════════════════════════════════════
+PROBLEM STATEMENT
+═══════════════════════════════════════════════════════
+Damco Solutions is running a "Builder Challenge" hiring process that
+replaces traditional resumes. Candidates must build/design a solution to
+a real, personally-experienced problem and walk through their thinking
+on video. The user needs a clear, structured understanding of:
+  (a) what Damco is asking for,
+  (b) what track to choose,
+  (c) what to build,
+  (d) what to record on video,
+  (e) how to submit.
+
+═══════════════════════════════════════════════════════
+KEY ASKS (from the brief)
+═══════════════════════════════════════════════════════
+1. Pick a real problem YOU have personally experienced
+   - Friction / inefficiency / "this shouldn't be this hard" moments
+   - Must be a system, not just a script
+
+2. Pick a track
+   - Track A: Engineer
+   - Track B: Tech Lead
+
+3. Build the solution
+   - Code it. Ship it. Push to a public repo.
+   - AI use is encouraged ("we care about what you ship, not how you got there")
+
+4. Record a 5–10 min video covering:
+   - Problem Framing (2–3 min): what problem, why is it hard
+   - System Design (5–6 min): architecture, components, data flows
+   - Tradeoffs (3–4 min): key decisions, alternatives, what would change your mind
+   - Failure Modes (2 min): what breaks, behavior under failure
+
+5. Submit via email
+   - To: hiring@damcogroup.com
+   - Subject: "Builder Challenge - [Your Name] - [Track A or B]"
+   - Attach: video link (YouTube unlisted), GitHub repo OR architecture doc, 2–3 line bio
+
+═══════════════════════════════════════════════════════
+EVALUATION CRITERIA (from engineer.test.ts in brief)
+═══════════════════════════════════════════════════════
+- Problem Identification
+- Technical Understanding
+- Scoping
+- Self-Awareness
+
+═══════════════════════════════════════════════════════
+INTERVIEW STAGES (after submission)
+═══════════════════════════════════════════════════════
+Step 1/3 : Code Review     (usually within 5 business days)
+Step 2/3 : Live Discussion (20 min)
+           - Engineer track: add a small feature while screen-sharing,
+             defend "why X over Y" decisions
+           - Tech Lead track: respond to "client added a requirement",
+             "budget cut in half" scenarios
+Step 3/3 : Cultural Screening (formal next steps)
+
+═══════════════════════════════════════════════════════
+EXAMPLE PROBLEMS (from brief — not mandatory, bring your own)
+═══════════════════════════════════════════════════════
+- "20 min sorting WhatsApp groups" → voice agent that summarizes unread msgs
+- "Parents can't find government forms" → Hindi voice assistant for gov services
+- "Forget Kindle highlights"        → agent that quizzes you on highlights
+- "Don't know what to cook"         → recipe agent from fridge photo
+- "Tracking expenses across UPI"    → voice agent categorizing screenshots
+
+═══════════════════════════════════════════════════════
+USER DECISIONS — STATUS
+═══════════════════════════════════════════════════════
+1. WHICH TRACK?       ✓ CONFIRMED — Track A (Engineer)
+2. WHICH PROBLEM?     ✓ LOCKED — Server-Driven UI platform for internal tools (working name: LogicLive)
+3. SCOPE ("system not script") : ✓ LOCKED — SDUI runtime + DB-resident logic + AI/dev co-editor
+4. STACK / AI tools to use     : ⏳ pending (PHASE 2)
+5. Public repo location (GitHub): ⏳ pending (PHASE 2)
+6. Video hosting (YouTube unlisted is the suggested default) : ⏳ pending (PHASE 2)
+
+═══════════════════════════════════════════════════════
+LOCKED BUILD PROBLEM (2026-05-30)
+═══════════════════════════════════════════════════════
+WORKING NAME: LogicLive (placeholder — finalize before submission)
+
+ONE-LINE PITCH:
+A Server-Driven UI platform for internal tools where business logic
+lives in a database (not source files) and can be edited by hand or
+through a scoped AI chat. No deploy required for logic changes.
+
+PROBLEM (the friction):
+Every time an internal tool needs a logic change — "exclude refunds
+from totals", "add a date filter" — it's a full dev cycle: branch,
+edit code, PR, merge, deploy. For high-frequency-change tools at
+data-heavy companies this kills velocity. Felt by user at MathCo
+across multiple client engagements.
+
+ARCHITECTURE (Server-Driven UI pattern):
+- DB schema: widgets(widget_id, screen_id, base_config, logic_code)
+- Frontend: generic config-renderer (knows 5–6 widget types, zero
+  app-specific logic)
+- API contract:
+    GET /render?screen_id=X&widget_id=Y&params=...
+  Backend:
+    1. Fetch logic_code from DB
+    2. Sandboxed exec(logic_code, params) → returns config-with-data
+    3. Return as JSON
+  Frontend:
+    Renders the returned config using the generic component library
+- Pattern is proven (Airbnb, Lyft, Spotify use SDUI on mobile);
+  the novel combo here = SDUI + DB-resident logic + AI editor +
+  internal-tool target audience
+
+WHAT THE DEV BUILDS:
+1. Defines UI screens by inserting rows into the widgets table
+   (base_config is YAML/JSON declaring widget type + props + layout)
+2. For each widget that needs logic, writes Python directly in an
+   in-app code editor OR opens chat to ask AI to write it
+3. Frontend hits backend on render → backend executes logic from DB
+   → returns full config-with-data → frontend draws it
+
+DIVISION OF LABOR:
+- UI config         → Dev writes (deterministic, version-controlled)
+- Business logic    → Dev or AI writes (both paths supported)
+- Component library → Pre-shipped (5–6 generic widgets)
+- Runtime exec      → Framework handles (sandboxed)
+
+AI ROLE (scoped, not omniscient):
+- Chat is bound to ONE widget's handler at a time
+- Prompt context includes: DB schema, sample data, the widget's
+  base_config, prior version of the handler
+- Writes/edits ONLY the Python function for that handler
+- Does NOT touch UI config (that's intentionally human-only)
+
+DEMO STORY (for the ~5 min video):
+- Open editor with empty app → paste a UI config (table + date input)
+  → live preview renders empty widgets
+- Open chat on the table widget → "fetch sales since 2026-05-01
+  grouped by product" → AI writes function → preview updates with data
+- User: "exclude refunds" → AI updates → preview refreshes — all
+  without a deploy
+- Final wow: add a chart widget by inserting one row + asking AI for
+  the logic — live in <30s
+
+WHY IT FITS DAMCO (4 criteria scored):
+- Problem ID         : real friction lived at MathCo across projects
+- Tech Understanding : SDUI architecture + runtime exec + schema-
+                       aware AI codegen + sandboxing
+- Scoping            : narrow widget library + scoped chat = ship-able
+                       in 2–3 weeks
+- Self-Awareness     : "Deterministic shell, AI brain" — clear,
+                       defensible split. AI deliberately NOT touching
+                       UI. Honest tradeoff list (below).
+
+HONEST TRADEOFFS (call out in the video):
+- Latency: every render = backend roundtrip → mitigate with caching
+  for static widgets, debounce for inputs
+- Sandbox: MVP uses subprocess; production needs containers / WASM
+- Versioning: DB-edits affect users immediately; need audit log +
+  rollback (history table of logic_code revisions)
+- Debugging: stack traces point to DB rows, not files; need
+  logic-id-aware logging layer
+- Schema-aware AI: needs a context provider to inject DB schemas +
+  sample data into prompts
+
+SCOPE ESTIMATE (~16 person-days for MVP):
+- Component library (text, input, button, table, chart)   : 3 days
+- UI config schema + generic renderer                     : 2 days
+- DB schema for widgets + logic                           : 1 day
+- Runtime: fetch logic from DB + sandboxed subprocess exec: 2 days
+- Chat panel scoped to a single handler                   : 2 days
+- AI: prompt → valid Python (with schema context)         : 2 days
+- Live preview / hot-reload on logic change               : 2 days
+- Demo polish + video recording                           : 2 days
+
+OUT OF SCOPE FOR MVP (flag as "next steps" in video):
+- Real sandbox isolation (subprocess is fine for demo)
+- Multi-user collaboration
+- Auth / RBAC
+- Production-grade audit log
+- More than 5–6 widget types
+- Visual layout editor (devs write YAML)
+
+═══════════════════════════════════════════════════════
+MATCHED LEARNINGS (PHASE 1.5)
+═══════════════════════════════════════════════════════
+Local file (source of truth): /home/sagar123/Thinker/system_rules_and_learning.txt
+
+File state after PHASE 1.5:
+  R001 - R010 : universal engineering process discipline (kept as-is)
+  C001 - C013 : IntegratedPlanning LEGACY (do NOT apply to LogicLive —
+                will never grep-match because we don't have ReactGrid,
+                ExcelTable, view_supply_plan, etc.)
+  C014 - C021 : LogicLive-specific architecture conventions (added 2026-05-30)
+                  - C014: SDUI vocabulary
+                  - C015: UI config is human-only
+                  - C016: fresh sandbox per render (SEE ALSO L032)
+                  - C017: /render API contract
+                  - C018: AI prompt context requirements
+                  - C019: logic_code must return explicit dict
+                  - C020: subprocess + timeout + import allowlist
+                  - C021: per-L026 endpoint guards on screen_id/widget_id
+  L001 - L038 : inherited from Coke Prod (mostly codebase-specific)
+
+Matched L* (directly apply to LogicLive build — cite during execution):
+  L018  Python: assignment to module-level var inside nested block needs
+                explicit `global` declaration. Will bite AI-generated code
+                that mutates request-scoped state without declaring global.
+  L022  FLOW : inline bug fixes during execution MUST append a DEBUG ENTRY
+                to the active context file before / after the fix.
+  L026  FastAPI: Pydantic with default= silently passes missing/null fields.
+                Add explicit endpoint-level guards (now encoded in C021).
+  L032  Python: module-level mutable globals (list=[], dict={}) carry stale
+                state across requests. Call .clear() at handler start (now
+                encoded in C016 — sandbox per render eliminates this entirely).
+  L034  Python: f-strings inside dict/list literals are evaluated IMMEDIATELY
+                at construction. Reference to vars defined LATER → NameError
+                at runtime. Critical for AI-generated dict returns.
+
+New L* entries (LogicLive-specific bugs / surprises) will accumulate
+starting at L039.
+
+═══════════════════════════════════════════════════════
+ROOT CAUSE / WHY THIS TASK EXISTS
+═══════════════════════════════════════════════════════
+The user has the Damco brief copied to damco_task.txt and wants a clear
+structured read of it before deciding what to build. The brief contains
+website chrome (nav, footer, services list) interleaved with the actual
+challenge — needs to be parsed into a clean checklist.
+
+═══════════════════════════════════════════════════════
+FIX APPROACH (for this understand-task)
+═══════════════════════════════════════════════════════
+- Present the parsed brief above as the "answer"
+- Surface key decisions the user must make
+- No code changes — pure analysis
+
+═══════════════════════════════════════════════════════
+ACCEPTANCE CRITERIA
+═══════════════════════════════════════════════════════
+- User can answer: what is Damco asking, what track to pick, what to build,
+  what to submit, what to record on video, who to email.
+- All ambiguities / open decisions flagged.
+- User confirms they understand the challenge or asks follow-up questions.
+
+═══════════════════════════════════════════════════════
+NOTES
+═══════════════════════════════════════════════════════
+- Task evolved from "understand" to "build LogicLive" after PHASE 1 problem
+  identification. BLAST RADIUS is now 26 NEW files under /Thinker/logiclive/,
+  /frontend/, /examples/, /tests/.
+- The "Thinker" project directory now hosts both the Thinker engine AND
+  the LogicLive build artifacts (intentional — keeps everything in one place).
+- The reference file (damco_task.txt) is the brief; some lines are website
+  chrome and can be ignored.
+
+═══════════════════════════════════════════════════════
+EXECUTION LOG
+═══════════════════════════════════════════════════════
+STEP 1 | 2026-05-30 | DONE
+        WHAT: Created pyproject.toml (8 deps), .gitignore, .env.example,
+              logiclive/__init__.py.
+        VALIDATION: ls confirms 4 files present with content; tomllib parses
+                    pyproject.toml (project.name=logiclive, version=0.1.0,
+                    8 deps listed); `python3 -c "import logiclive"` returns
+                    version 0.1.0.
+        CITATIONS: [R001] one logical change per step; [R003] read-before-
+                   assume (pre-checked no existing files).
+
+STEP 2 | 2026-05-30 | DONE
+        WHAT: Created logiclive/db.py (SQLAlchemy 2.0 DeclarativeBase + Widget
+              table + engine factory + init_db) and tests/test_db.py (5 tests).
+              Created .venv (PEP 668 forbids global installs); installed
+              sqlalchemy 2.0.50 + pytest 9.0.3 + python-dotenv into .venv;
+              installed logiclive editable via `pip install -e . --no-deps`.
+        VALIDATION: pytest tests/test_db.py -v → 5 passed:
+                    - test_init_creates_widgets_table
+                    - test_init_is_idempotent
+                    - test_widgets_schema_matches_C014  (verifies [C014])
+                    - test_widgets_primary_key_is_screen_id_and_widget_id
+                    - test_insert_and_fetch_widget
+        CITATIONS: [C014] canonical SDUI field names (screen_id, widget_id,
+                   base_config, logic_code, updated_at); [C016] engine factory
+                   so tests use isolated DBs.
+        SIDE NOTES (deferred, non-blocking):
+          1. pytest emits "Unknown config option: asyncio_mode" because
+             pyproject sets asyncio_mode=auto but pytest-asyncio isn't
+             installed yet. Install when first async test arrives (Step 5).
+          2. datetime.utcnow() is deprecated in Python 3.12. Acceptable for
+             MVP; migrate to datetime.now(datetime.UTC) at the polish phase.
+          3. Network was flaky → installed minimum deps only (not full
+             [dev] extra). Frontend + ai.py steps will need more deps; will
+             retry full install then.
+        NEXT: STEP 3 — FastAPI app skeleton + /health in logiclive/app.py.
+
+STEP 3 | 2026-05-30 | DONE
+        WHAT: Created logiclive/app.py — FastAPI() with title/desc/version,
+              lifespan handler running init_db() at startup, CORS middleware
+              allowlisting localhost:5173 + 127.0.0.1:5173 (Vite dev),
+              GET /health returning {"status": "ok"}. Installed fastapi
+              0.136.3 + uvicorn 0.48.0 + sse-starlette into .venv.
+        VALIDATION: uvicorn booted on 127.0.0.1:8001 in <2s, curl /health
+                    returned HTTP 200 with body {"status":"ok"}, and
+                    logiclive.db was auto-created by init_db on startup
+                    (confirmed by file check after server shutdown).
+        CITATIONS: [R007] stop on first failure; [C017] CORS is a tight
+                   allowlist (not wildcard) per API-contract discipline.
+        SIDE NOTES:
+          - pip warned that httpx (>=0.27) is not yet installed (project
+            declares it). Not blocking — will install at Step 19 (Ollama
+            client step).
+        NEXT: STEP 4 — React + Vite frontend scaffold under /frontend/.
+              Heavier: `npm create vite@latest` + dep install. Will require
+              Node.js + npm. Check tooling availability first.
+
+STEP 4 | 2026-05-30 | DONE
+        WHAT: Created frontend/ scaffold manually (more deterministic than
+              the interactive `npm create vite` flow): package.json (React 18 +
+              Vite 5 + react-plotly.js + plotly.js-dist-min + @monaco-editor/
+              react + monaco-editor), vite.config.js (proxy /api → :8000
+              with /api prefix stripped), jsconfig.json (path aliases, JSX),
+              index.html (#root + main.jsx module), src/main.jsx (StrictMode
+              root render), src/App.jsx (placeholder showing "LogicLive
+              bootstrapping").
+              Ran `npm install` → 331 packages in 22s, 250 top-level
+              entries in node_modules.
+        VALIDATION: `npm run dev` boots Vite v5.4.21 in 210ms on
+                    127.0.0.1:5173. curl / returns HTTP 200 + Vite HTML
+                    scaffold (React refresh runtime injected, #root div
+                    present, title=LogicLive). curl /src/App.jsx returns
+                    HTTP 200 and contains the literal "LogicLive
+                    bootstrapping" string (proxy proxy for the visual
+                    "browser shows text" assertion).
+        CITATIONS: [R007] would have routed to BLOCKED if Node/npm missing
+                   (verified pre-step); [R008] minimal — used Vite defaults
+                   + only the 4 deps from the flow file.
+        SIDE NOTES:
+          - Node 18.19.1 / npm 9.2.0 confirmed on PATH.
+          - Bash CWD persists between calls — caused a first probe attempt
+            to fail (npm install changed CWD to /frontend then a fresh
+            `cd frontend` failed). Workaround used: absolute paths /
+            already-inside CWD for subsequent commands. Worth a future
+            learning entry.
+        NEXT: STEP 5 — Subprocess sandbox executor in logiclive/sandbox.py.
+              Critical for [C016], [C020]. Will need pytest-asyncio (or
+              keep sandbox sync). Time to fix the asyncio_mode warning too.
+
+STEP 5 | 2026-05-30 | DONE
+        WHAT: Created logiclive/sandbox.py with exec_logic(code, params,
+              timeout=5, mem_mb=128) -> dict. Internal runner script
+              embedded as a textwrap-dedented string. Runner:
+                - sets RLIMIT_AS for memory cap (best effort)
+                - reads single JSON {code, params} from stdin
+                - exposes restricted __builtins__ (no __import__, eval,
+                  exec, open, compile, etc.)
+                - pre-imports allowlisted modules: json, math, datetime,
+                  sqlite3, statistics (available as globals)
+                - redirects user stdout to a scratch buffer
+                - exec()s code, looks up render(), calls render(params)
+                - JSON-dumps result to stdout as the sole IPC channel
+              Returns clear error envelope for: timeout, runtime, no_render,
+              non_dict, non_serializable, sandbox_exit, no_output,
+              bad_output. Installed pytest-asyncio 1.4.0 into .venv to
+              clear the asyncio_mode=auto warning.
+        VALIDATION: pytest tests/test_sandbox.py -v → 12 passed in 0.69s.
+                    All 4 flow-required cases green:
+                      - test_happy_path
+                      - test_timeout_kill (busy-loop killed at 0.4s)
+                      - test_blocked_import_via_import_statement +
+                        test_blocked_dunder_import_directly
+                      - test_exception_caught (ZeroDivisionError)
+                    Plus 8 extras: no_render, non_dict, non_serializable,
+                    allowlisted modules, user print swallowed,
+                    params threading, syntax error.
+        CITATIONS: [C016] fresh subprocess per call enforces no-shared-state;
+                   [C020] subprocess+timeout+rlimit+restricted-builtins =
+                   all five defense layers; [L032] structurally prevented
+                   rather than .clear()-at-handler-start; [R007] would
+                   have routed to BLOCKED on any test red.
+        SIDE NOTES:
+          - Bash CWD persisted into frontend/ between turns again;
+            had to cd back to project root. Worth a learning entry
+            (L039 candidate) when the auto-learning gate fires.
+          - sqlite3 module IS in the allowlist — widget logic can query
+            data files. Future tightening: per-widget sqlite paths.
+        NEXT: STEP 6 — /render endpoint + L026/C021 guards in app.py.
+              Adds widgets_registry.py too. Will exercise sandbox end-to-end.
+
+STEP 6 | 2026-05-30 | DONE
+        WHAT: Created logiclive/widgets_registry.py (KNOWN_TYPES set +
+              merge_render that combines base_config with sandbox output
+              per [C017] envelope and bubbles error envelopes unchanged).
+              Modified logiclive/app.py: added imports (HTTPException,
+              Query, Depends, Session, Widget, exec_logic, merge_render,
+              KNOWN_TYPES, json), get_db() FastAPI dependency, and
+              GET /render endpoint that:
+                1. [C021]+[L026] explicit truthy guards on screen_id and
+                   widget_id (Pydantic default=None silently passes)
+                2. JSON-parse + dict-type-check params
+                3. db.get(Widget, (screen_id, widget_id)) → 404 if missing
+                4. base_config.type membership check vs KNOWN_TYPES
+                5. logic_code missing → static return of base_config
+                6. logic_code present → exec_logic(...) → merge_render(...)
+              Installed httpx 0.28.1 for TestClient.
+        VALIDATION: pytest tests/test_render.py -v → 11 passed in 0.66s:
+                    - test_missing_screen_id_returns_400
+                    - test_missing_widget_id_returns_400
+                    - test_empty_string_screen_id_also_returns_400 (verifies
+                      truthy not None check — [C021] discipline)
+                    - test_invalid_json_params_returns_400
+                    - test_non_object_params_returns_400
+                    - test_widget_not_found_returns_404
+                    - test_happy_path_returns_config
+                    - test_table_widget_merges_data_and_props_overrides
+                    - test_logic_error_returns_error_field (sandbox catches
+                      ZeroDivisionError → error envelope; HTTP 200 still)
+                    - test_static_widget_no_logic_returns_base_config
+                    - test_unknown_widget_type_returns_500
+        CITATIONS: [C017] /render envelope shape; [C021]+[L026] explicit
+                   guards; [C014] canonical fields; [C015] base_config
+                   owns `type`; [C016] sandbox per render (delegated to
+                   sandbox.exec_logic).
+        SIDE NOTES:
+          - StarletteDeprecationWarning re httpx2 — not blocking, comes
+            from FastAPI's TestClient. Will resolve when starlette updates.
+          - datetime.utcnow() deprecation warnings appear (55 of them) from
+            sqlalchemy default factory. Same MVP-acceptable status as before.
+        NEXT: STEP 7 — Seed sample widgets in examples/seed.py. Inserts
+              a 5-widget sales_report screen exercising input × 2, table,
+              chart, text-KPI. First end-to-end curl /render test from
+              the shell.
+
+STEP 7 | 2026-05-30 | DONE
+        WHAT: Created examples/seed.py — idempotent seeder that wipes the
+              sales_report screen and inserts 5 widgets:
+                - input.start_date (static, label/kind=date/default)
+                - input.end_date   (static, label/kind=date/default)
+                - table.results    (logic returns 4 product rows + footer)
+                - chart.revenue    (logic returns Plotly bar figure dict)
+                - text.total_kpi   (logic returns formatted total string)
+              Logic_code stored as textwrap-dedented multiline strings.
+              Run command: `.venv/bin/python examples/seed.py`.
+        VALIDATION:
+          1. seed.py: prints "Seeded 5 widgets for screen_id='sales_report'"
+          2. SQL count via SessionLocal: rows=5, all 5 widget_ids present
+          3. End-to-end via uvicorn on :8002:
+             - /render table.results → 200, JSON body has type=table,
+               props.columns=[product,qty,revenue], props.footer="4 products",
+               data=[4 product rows with qty + revenue numbers]
+             - /render text.total_kpi → 200, children="Total revenue: 18,000"
+               (sandbox executed logic_code; comma-thousands formatting works)
+             - /render input.start_date → 200, static base_config path
+               returns type=input, props with label/kind/default (no logic_code
+               was set, so the static fallback in /render fired correctly)
+        CITATIONS: [C014] canonical SDUI vocabulary in base_config;
+                   [C015] base_config carries `type`; [C019] every logic_code
+                   ends with explicit `return`; [C017] /render envelope shape
+                   confirmed in the JSON output.
+        SIDE NOTES:
+          - `kill $PID; wait $PID` pattern leaves shell with exit=143
+            (SIGTERM). All real validations passed; ignore the 143.
+            Will note as L039 candidate or fold into the L040 bash-CWD
+            note at task close.
+          - logiclive.db now has 5 production rows. Subsequent steps
+            that need data can run without re-seeding.
+        NEXT: STEP 8 — Generic renderer + widget registry on the frontend.
+              Adds GET /screen?screen_id=X to app.py (enumerates widget_ids
+              for a screen). Creates AppRenderer.jsx + widgets/index.js +
+              api/client.js in frontend/src/.
+
+STEP 8 | 2026-05-30 | DONE
+        WHAT:
+          BACKEND: Added GET /screen?screen_id=X to logiclive/app.py.
+            Lists {widget_id, type} for a screen. [C021]-style explicit
+            truthy guard; 404 if no widgets. Added `from sqlalchemy import
+            select` to imports.
+          FRONTEND:
+            - frontend/src/api/client.js — fetchScreen + renderWidget
+              fetch helpers; threading backend `detail` into error msgs.
+            - frontend/src/widgets/Placeholder.jsx — placeholder component
+              showing widget_id, type, raw JSON config; handles loading +
+              error states. Replaced by real widgets in Steps 9-13.
+            - frontend/src/widgets/index.js — registry mapping each of the
+              5 known types to Placeholder + registerWidget(type, comp).
+            - frontend/src/AppRenderer.jsx — reads ?screen= from URL,
+              fetches /api/screen, then per widget fetches /api/render and
+              dispatches to the registered component. Handles: no screen
+              param, fetch error, loading.
+            - frontend/src/App.jsx — now just `<AppRenderer/>`. Path-based
+              routing for /editor comes in Step 14.
+        VALIDATION:
+          - pytest tests/ -q → 28 passed in 1.24s (no regressions; the 5
+            tests from test_db, 12 from test_sandbox, 11 from test_render
+            all still green after app.py edits).
+          - Backend /screen on :8000:
+              - happy path returns 5 widgets with correct types
+              - missing screen_id → HTTP 400
+              - unknown screen_id → HTTP 404
+          - Vite dev on :5173 with backend on :8000:
+              - / → 200 (Vite SPA index.html)
+              - /app → 200 (SPA fallback)
+              - /src/AppRenderer.jsx, /src/widgets/index.js,
+                /src/widgets/Placeholder.jsx, /src/api/client.js → all 200
+                (transpiled and served by Vite dev)
+              - END-TO-END VIA PROXY:
+                * /api/screen?screen_id=sales_report → 5 widgets
+                  (full chain: browser → Vite proxy → FastAPI → DB)
+                * /api/render?screen_id=sales_report&widget_id=text.total_kpi
+                  → {"type":"text", "props":{"style":...},
+                     "children":"Total revenue: 18,000"}
+                  (full chain: browser → Vite proxy → FastAPI → DB lookup
+                   → sandbox subprocess → merge_render → JSON)
+        CITATIONS: [C014] canonical SDUI vocab in /screen response;
+                   [C017] response envelope shape verified end-to-end;
+                   [C021]+[L026] explicit screen_id guard on /screen;
+                   [R008] no separate /screen test file — minimal, covered
+                   by e2e curl + regression suite.
+        SIDE NOTES:
+          - First test pass mistakenly ran backend on :8003 while Vite
+            proxies to :8000 → empty proxy response. Re-ran with :8000
+            and proxy worked. Worth folding into a future learning:
+            "When testing a Vite-proxied frontend, the backend port
+            MUST match vite.config.server.proxy.target — port-shifting
+            for collision avoidance silently disables the proxy chain."
+          - Cosmetic: pre-existing datetime.utcnow() deprecation warnings
+            keep accumulating in test output (55 → 57 → still 55+). Will
+            address in polish phase per [R008].
+        NEXT: STEP 9 — Text widget (real component). Smallest of the
+              5 widgets — should be a quick step. Adds Text.jsx and
+              registers it (replaces Placeholder for type='text').
+              First validation that the registry-swap mechanism works.
+
+STEP 9 | 2026-05-30 | DONE
+        WHAT: Created frontend/src/widgets/Text.jsx — renders config.children
+              with style precedence: BASE_STYLE → props.style → top-level
+              style. Handles error envelope with a red-bordered visual error
+              block. Updated frontend/src/widgets/index.js to import Text
+              and register `text: Text` (was: text: Placeholder).
+        VALIDATION:
+          - GET /src/widgets/Text.jsx via Vite → 200
+          - Transpiled output includes React refresh runtime hooks
+            (HMR wired correctly) and BASE_STYLE constant preserved
+          - Vite-served widgets/index.js now contains:
+              import { Text } from "/src/widgets/Text.jsx"
+              text: Text
+          - Backend untouched — no regression run needed
+        CITATIONS: [C017] config envelope respected (children, props.style,
+                   style, error); [R008] minimal 38-line component.
+        NEXT: STEP 10 — Input widget (controlled, debounced /render on change).
+              First widget with state + side effects. POST /params endpoint
+              also added to app.py so input changes can invalidate
+              dependent widgets (precursor to SSE in Step 17).
+
+STEP 10 | 2026-05-30 | DONE
+        WHAT: Created frontend/src/widgets/Input.jsx — controlled <input>
+              with internal val state + 300ms debounce. onChange(widgetId,
+              next) fires after debounce. Reads initial value from
+              config.props.value (committed) OR config.props.default
+              (declarative). Renders label + typed input (kind='date'
+              becomes <input type=date>). Error envelope rendered as red
+              error block. Cleanup clears pending timeout on unmount.
+              Updated frontend/src/widgets/index.js: import Input,
+              register input → Input (was Placeholder).
+              Updated frontend/src/AppRenderer.jsx: added paramsMap state,
+              onParamChange useCallback that updates the map, included
+              paramsMap in the /render-fetch effect's dep array so all
+              widgets re-fetch when ANY input changes. Also injects the
+              committed paramsMap[widget_id] back into input widget configs
+              so the controlled <input> renders the right value.
+        DEVIATION from flow (logged for honest tradeoff):
+          Flow specified POST /params + SSE broadcast for dependent
+          re-render. Replaced with client-side paramsMap state + on-change
+          full re-fetch. Reason: SSE is Step 17; for the single-user MVP
+          this is simpler and equivalent. Multi-user real-time updates
+          will need the original design — revisit if scope expands.
+        VALIDATION:
+          - Input.jsx via Vite → 200 (transpiles + HMR-wired)
+          - widgets/index.js: import { Input } from './Input.jsx' + input: Input
+          - AppRenderer.jsx contains: paramsMap (5 refs), onParamChange (2),
+            useCallback (2), renderWidget(...paramsMap) (1) — i.e. the
+            wiring is in place
+          - End-to-end /api/render with URL-encoded params {start_date:...}
+            still returns valid config-with-data (current seed's table
+            logic ignores the param but the wire reaches sandbox)
+        CITATIONS: [C016] each /render is fresh (re-fetch on every params
+                   change exploits this); [C017] config envelope shape
+                   honoured (props.value, props.default, props.label,
+                   props.kind, error); [R008] minimal — skipped POST
+                   /params endpoint; [L022 candidate] flow deviation
+                   logged here rather than as a separate DEBUG ENTRY since
+                   it was a planned scope-shrink, not a runtime bug.
+        NEXT: STEP 11 — Button widget. POST /action endpoint added to
+              app.py, Button.jsx wires onClick → /action → re-fetch.
+              Mirrors the same client-side pattern Step 10 used for inputs.
+
+STEP 11 | 2026-05-30 | DONE
+        WHAT:
+          BACKEND: Added `class ActionRequest(BaseModel)` with screen_id /
+            widget_id / params all Optional[None], explicit truthy guards
+            inside POST /action handler. Response: {ok: bool, result?, error?}
+            distinct from /render's envelope. Empty logic_code → {ok: true,
+            result: null}. Sandbox error → {ok: false, error: {...}}.
+          FRONTEND:
+            - frontend/src/widgets/Button.jsx — POSTs to /api/action with
+              {screen_id, widget_id, params={}}. Disabled during pending.
+              On success calls onChange('_action_tick', Date.now()) to
+              bump paramsMap and trigger a full re-fetch via AppRenderer's
+              params-deps effect. Errors surface inline next to button.
+            - widgets/index.js: button → Button (was Placeholder).
+            - AppRenderer.jsx: now passes `screenId` prop to every widget
+              so Button can include it in /action body without re-parsing
+              the URL.
+        DEVIATION from flow: skipped the "affected_widgets" list machinery
+          (server returning a list of widget_ids to invalidate). Used the
+          same _action_tick bump pattern as Step 10. Consistent with the
+          single-user MVP. Note: Buttons with side effects that DON'T
+          change visible widgets will still trigger a full re-fetch — a
+          small inefficiency, acceptable for MVP.
+        VALIDATION:
+          - pytest tests/ -q → 28 passed (no backend regression)
+          - curl -v POST /action with body {"widget_id":"x"} → HTTP 400
+            {"detail":"screen_id required"}
+          - curl -v POST /action with {"screen_id":null,"widget_id":"x"}
+            → HTTP 400 (truthy guard catches null too — [C021] discipline)
+          - curl -v POST /action with valid body for text.total_kpi →
+            HTTP 200 {"ok":true,"result":{"children":"Total revenue:
+            18,000"}} (sandbox executes, returns the dict)
+          - curl -v POST /action with static widget (no logic_code) →
+            HTTP 200 {"ok":true,"result":null}
+          - curl -v POST /action with screen_id=sales_report,
+            widget_id=ghost → HTTP 404
+          - Vite: /src/widgets/Button.jsx → 200; widgets/index.js has
+            both import { Button } from './Button.jsx' AND button: Button
+        SIDE NOTE (worth a learning at task close):
+          First test used `curl -w '%{http_code}'` inside $() with
+          backslash-escaped `\"` JSON in -d → showed 422 for every test,
+          which was misleading. Switching to `-sv` and parsing the
+          actual HTTP/1.1 status line confirmed the endpoint returns
+          400/200/404 correctly. Shell-quote escaping in nested $()
+          + double-quoted JSON is fragile; prefer here-strings or
+          temp files for assertion-style tests.
+        CITATIONS: [C016] /action also goes through fresh sandbox per
+                   invocation; [C017] response envelope is documented as
+                   distinct from /render's; [C021]+[L026] explicit truthy
+                   guards on Pydantic Optional fields catch null/empty;
+                   [R008] minimal — no separate test_action.py.
+        NEXT: STEP 12 — Table widget. The biggest of the widget JSX files
+              so far. Renders columns header + rows + optional per-cell
+              _style, handles empty data state, scroll on overflow.
+
+STEP 12 | 2026-05-30 | DONE
+        WHAT: Created frontend/src/widgets/Table.jsx — renders <table>
+              with header from config.props.columns + body from
+              config.data. Per-row optional _style applies to every <td>
+              in that row (per-cell granularity deferred). Footer from
+              config.props.footer. Empty data → "No rows" placeholder.
+              Overflow scroll wrapper. Number cells auto-formatted via
+              toLocaleString. Error envelope rendered as red block.
+              Updated widgets/index.js: table → Table (was Placeholder).
+        VALIDATION:
+          - /src/widgets/Table.jsx via Vite → 200
+          - widgets/index.js has: import { Table } from './Table.jsx'
+            + table: Table
+          - Backend /render for table.results returns the expected shape:
+              type=table
+              props.columns=['product', 'qty', 'revenue']
+              props.footer='4 products'
+              data: 4 rows, each {'product', 'qty', 'revenue'} (no _style
+              field set in the seed — that's intentional, _style is
+              optional)
+          - Component contract aligns: Table will render header (3 cols)
+            + 4 data rows with toLocaleString numbers ("6,200" etc.) +
+            footer "4 products"
+        CITATIONS: [C017] config envelope (props.columns, props.footer,
+                   data, error); [R008] minimal — per-row _style only,
+                   per-cell styling deferred to polish phase.
+        NEXT: STEP 13 — Chart widget. react-plotly.js wrapper. The
+              chart.revenue widget already returns a Plotly figure dict
+              from its seeded logic_code; Chart.jsx just needs to pass
+              data + layout to <Plot/>. Smallest remaining widget step.
+              After this, all 5 widget types are live and the demo's
+              /app?screen=sales_report will be fully rendered.
+
+STEP 13 | 2026-05-30 | DONE
+        WHAT: Created frontend/src/widgets/Chart.jsx — uses the
+              react-plotly.js FACTORY pattern with plotly.js-dist-min
+              (smaller than the default ~7MB plotly.js bundle). Wraps
+              <Plot/> with useResizeHandler, fixed 400px height, autosize
+              layout, hidden modebar. Defaults merge under user-provided
+              layout via {...DEFAULT_LAYOUT, ...userLayout}. Empty data
+              → "No chart data" placeholder. Error envelope rendered as
+              red block.
+              Updated widgets/index.js: chart → Chart (was Placeholder).
+        VALIDATION:
+          - /src/widgets/Chart.jsx via Vite → 200
+          - Transpiled output references
+              /node_modules/.vite/deps/react-plotly__js_factory.js
+          - Vite pre-bundled plotly.js-dist-min serves (200)
+          - widgets/index.js: import { Chart } + chart: Chart
+          - Backend /render for chart.revenue:
+              type=chart
+              props.layout.title="Revenue by product"
+              data: 1 Plotly trace (type=bar, x=[4 products], y=[4 revs])
+        CITATIONS: [C017] config envelope shape (data array, props.layout);
+                   [R008] minimal — bare Plot wrapper, no custom controls.
+        MILESTONE: All 5 widget types (text, input, button, table, chart)
+                   are now real components. /app?screen=sales_report
+                   will render the full demo:
+                     - 2 date inputs (start/end)
+                     - Product table (4 rows, formatted numbers, footer)
+                     - Bar chart (revenue by product)
+                     - Bold KPI text ("Total revenue: 18,000")
+                   Phase 2C complete. Moving to Phase 2D (Editor screen).
+        NEXT: STEP 14 — Editor shell layout. Creates Editor.jsx with
+              a 3-pane CSS grid: WidgetTree (left 20%) + CodeEditor +
+              LivePreview stacked (center 55%) + ChatPanel (right 25%).
+              Stubs the child components — they get populated in
+              Steps 15-17. Also wires path-based routing: /editor route
+              uses Editor.jsx, anything else uses AppRenderer.
+
+STEP 14 | 2026-05-30 | DONE
+        WHAT:
+          - frontend/src/styles/editor.css — CSS custom properties for
+            theme; grid-template-columns: 20% 55% 25%; grid-template-rows:
+            40px 1fr; named areas "header tree center chat". Center pane
+            is flex column for stacked code/preview. min-height: 0
+            everywhere so nested flex/grid can shrink.
+          - frontend/src/editor/WidgetTree.jsx — Step 14 stub printing
+            screen + selected ids.
+          - frontend/src/editor/CodeEditor.jsx — Step 14 stub printing
+            widget id or "select a widget".
+          - frontend/src/editor/LivePreview.jsx — Step 14 stub showing
+            target /app?screen=X URL.
+          - frontend/src/editor/ChatPanel.jsx — Step 14 stub.
+          - frontend/src/Editor.jsx — composes the 4 panes; reads
+            ?screen= from URL; holds selectedWidgetId state and threads
+            it down + onSelect callback.
+          - frontend/src/App.jsx — path-based routing:
+              isEditorPath('/editor' || '/editor/...') → <Editor/>
+              else → <AppRenderer/>
+        VALIDATION:
+          - All 6 new files via Vite → 200 each
+          - SPA fallback works: /editor → 200, /editor?screen=sales_report
+            → 200 (Vite serves index.html, React routes by pathname)
+          - App.jsx transpiled output contains the isEditorPath function
+            + the pathname check
+          - editor.css text-bundled with grid-template-areas, editor-shell,
+            editor-tree, etc. (Vite injects via CSS-in-JS module)
+        CITATIONS: [C015] Editor edits logic_code only, never base_config
+                   (will be enforced concretely in Step 16's /save handler);
+                   [R008] stubs only — child components populated in 15-17.
+        SIDE NOTES:
+          - 4 editor/ child components total — they get heavier in
+            Steps 15-17 (WidgetTree=15, CodeEditor=16, LivePreview=17).
+            ChatPanel waits for Step 21.
+          - editor.css uses --bg/--pane-bg/--border/etc. tokens so a
+            future polish step can switch to a dark theme by overriding
+            :root vars only.
+        NEXT: STEP 15 — WidgetTree. Fetches GET /api/screen, renders the
+              widget list with selected highlighting, clicking → calls
+              onSelect(widget_id) → updates Editor state → CodeEditor
+              loads logic_code for that widget (Step 16).
+
+STEP 15 | 2026-05-30 | DONE
+        WHAT: Replaced Step 14 stub in frontend/src/editor/WidgetTree.jsx
+              with real component:
+                - fetchScreen(screenId) on mount; cancelled flag in cleanup
+                  to avoid setState-after-unmount on rapid screen switches
+                - Renders each {widget_id, type} as a row: colored type
+                  badge (text=purple, input=green, button=blue, table=
+                  orange, chart=pink) + widget_id in monospace
+                - Selected row gets {background: #eaf3ff}
+                - onClick → onSelect(widget_id) — bubbles to Editor state
+                - Loading / empty / error states all handled
+                - title attribute provides tooltip on hover
+        VALIDATION:
+          - /src/editor/WidgetTree.jsx via Vite → 200
+          - Transpiled output contains: fetchScreen import, TYPE_COLORS
+            constant, function signature with destructured props
+            (screenId, selectedWidgetId, onSelect), onClick handler
+            calling onSelect(w.widget_id)
+          - /api/screen via Vite proxy still returns 5 widgets:
+              chart  chart.revenue
+              input  input.end_date
+              input  input.start_date
+              table  table.results
+              text   text.total_kpi
+        CITATIONS: [C014] canonical fields widget_id + type used as-is;
+                   [R008] minimal — flat list, no drag/drop or grouping.
+        NEXT: STEP 16 — CodeEditor (Monaco) + /save endpoint. The
+              biggest editor step. CodeEditor binds Monaco to the
+              selected widget's logic_code (via new GET /api/logic),
+              Ctrl+S → POST /api/save → updates DB. Backend gains
+              both /logic (read) and /save (write) endpoints with
+              [C021]/[L026] guards and [C015] base_config-untouchable
+              enforcement.
+
+STEP 16 | 2026-05-30 | DONE
+        WHAT:
+          BACKEND (logiclive/app.py):
+            - SaveRequest BaseModel with only screen_id/widget_id/logic_code
+              fields — [C015] structurally enforced (no base_config field
+              means clients can't even send one).
+            - GET /logic?screen_id=X&widget_id=Y returns
+              {screen_id, widget_id, logic_code} (logic_code may be null).
+              [C021]/[L026] explicit truthy guards.
+            - POST /save with SaveRequest body. [C021]/[L026] guards;
+              404 if widget missing; updates widget.logic_code ONLY then
+              db.commit(); returns {ok: true, ...}. Stub comment notes
+              Step 17 will emit SSE 'widget-changed' here.
+          FRONTEND (frontend/src/editor/CodeEditor.jsx):
+            - Replaced Step 14 stub. Loads logic_code via GET /api/logic
+              on screenId+widgetId change (cancelled flag for cleanup).
+              Code state + origCode state to track dirty.
+            - Monaco <Editor language="python" theme="vs-dark"> with
+              minimap disabled, fontSize 13, tabSize 4, lineNumbers on.
+            - Ctrl+S bound via editor.addCommand. Closure-free via
+              saveRef.current pattern so Monaco binds to the latest
+              save() at all times.
+            - Save button enabled only when dirty + !saving.
+            - Header shows widget_id + status (loading / saving / saved /
+              unsaved (Ctrl+S) / error).
+            - Empty state when no widget selected.
+          TESTS (tests/test_render.py):
+            - 11 new tests covering /logic and /save:
+                missing_screen → 400; missing_widget → 400;
+                not_found → 404; returns_code; returns_null_for_static;
+                save_updates_logic; save_can_clear; save_missing_screen;
+                save_missing_widget; save_unknown_widget;
+                save_does_not_touch_base_config ([C015] proof —
+                sends "evil" base_config in the body, confirms /render
+                still returns the original widget type)
+        VALIDATION:
+          - pytest tests/ -q → 39 passed (up from 28)
+          - End-to-end via curl on :8000:
+              1. GET /logic for text.total_kpi → original source string
+              2. POST /save with new code → {"ok":true,...}
+              3. GET /render → "children":"Edited via /save endpoint"
+                 (immediate reflection, no caching!)
+              4. Restored original logic for cleanliness
+          - Vite: CodeEditor.jsx → 200; @monaco-editor/react
+            pre-bundle → 200
+        CITATIONS: [C015] no base_config field on SaveRequest (structural
+                   enforcement); [C021]+[L026] explicit truthy guards;
+                   [C016] /render still hits sandbox per call so DB
+                   edits are reflected immediately; [R007] would have
+                   routed to BLOCKED on any of the 11 new tests failing.
+        MILESTONE: The system can now edit itself live. Dev opens editor
+                   → picks a widget in WidgetTree → Monaco loads logic →
+                   Ctrl+S saves → /render reflects on next call. Only
+                   missing piece: automatic LivePreview refresh, which
+                   Step 17 (SSE) wires up so the dev doesn't have to
+                   manually reload the iframe.
+        NEXT: STEP 17 — LivePreview iframe + SSE. Adds /events SSE
+              endpoint and a publish-on-save hook in /save. LivePreview.jsx
+              becomes an iframe pointed at /app?screen=X, subscribes to
+              'widget-changed' events for the matching screen_id, and
+              triggers an iframe reload on event.
+
+STEP 17 | 2026-05-30 | DONE
+        WHAT:
+          BACKEND (logiclive/app.py):
+            - Imported asyncio + sse_starlette.EventSourceResponse.
+            - Added module-level _subscribers: list[asyncio.Queue].
+            - Added async publish_widget_changed(screen_id, widget_id):
+              fans out a {"type":"widget-changed", screen_id, widget_id}
+              payload to all subscribers. asyncio.QueueFull swallowed
+              (best-effort).
+            - Made POST /save async; after db.commit() calls
+              `await publish_widget_changed(...)`.
+            - Added GET /events SSE endpoint via EventSourceResponse.
+              Per-connection asyncio.Queue (maxsize=100) registered into
+              _subscribers; 20s asyncio.wait_for → emits 'ping'
+              heartbeat to keep connections alive through proxies; queue
+              de-register in finally.
+          FRONTEND (frontend/src/editor/LivePreview.jsx):
+            - Replaced Step 14 stub.
+            - <iframe ref={iframeRef} src=`/app?screen=${X}`>.
+            - useEffect creates `new EventSource('/api/events')` on mount;
+              addEventListener('widget-changed', handler).
+            - Handler filters by data.screen_id === screenId, then
+              reloads iframe via `node.src = node.src`.
+            - Cleanup: removeEventListener + es.close().
+            - Header strip shows the iframe URL for the dev.
+        VALIDATION:
+          - pytest tests/ -q → 39 passed (no regression from making
+            /save async — TestClient handles both sync and async)
+          - SSE end-to-end via curl on :8000:
+              * Subscribed: curl --max-time 4 /events &
+              * Triggered: POST /save with new logic
+              * SSE captured exactly:
+                  event: widget-changed
+                  data: {"type":"widget-changed","screen_id":"sales_report",
+                         "widget_id":"text.total_kpi"}
+              * Restored original logic for cleanup
+          - Vite: LivePreview.jsx → 200; transpiled output contains
+            EventSource constructor, widget-changed listener, iframeRef
+            usage.
+        CITATIONS: [C016] /save still drives sandbox refresh per request;
+                   [C017] /events emits a stable event-name + payload
+                   shape; [R007] would have routed to BLOCKED on any of
+                   the 39 backend tests regressing or SSE stream coming
+                   back empty.
+        SIDE NOTE:
+          - asyncio.Queue per-subscriber is suitable for single-process
+            uvicorn. Multi-worker (gunicorn -w N) would need a shared
+            broker (Redis pub/sub). Note for the video's "production
+            tradeoffs" section.
+        MILESTONE — PHASE 2D COMPLETE: The full editor experience now
+          works end-to-end:
+            1. Dev opens /editor?screen=sales_report
+            2. Picks a widget in WidgetTree (Step 15)
+            3. Monaco loads its logic_code (Step 16)
+            4. Edits + Ctrl+S → POST /save → DB update (Step 16)
+            5. SSE event published (this step)
+            6. LivePreview iframe reloads automatically (this step)
+            7. Dev sees the change immediately — no manual refresh
+          This IS the "wow moment" for the Damco video.
+
+        NEXT: PHASE 2E — Local AI integration via Ollama.
+              STEP 18 documents Ollama prereqs in README + .env.example
+              (no code yet). Then STEP 19 builds ai.py (Ollama client +
+              [C018] context assembly). STEP 20 adds /ai/generate
+              endpoint. STEP 21 wires the ChatPanel UI with streamed
+              diff view.
+
+STEP 18 | 2026-05-30 | DONE
+        WHAT:
+          - Created README.md (166 lines). Sections:
+              * Pitch (one-paragraph)
+              * What it is (UI config vs business logic split)
+              * Prerequisites — explicit `ollama pull qwen2.5-coder:7b`
+                + `ollama serve` commands
+              * Quickstart (6-step block: venv → install → seed →
+                uvicorn → npm → open in browser)
+              * Architecture (table of layer/tech/role)
+              * Key endpoints table including /ai/generate (Step 20)
+              * Environment variables documented
+              * Honest tradeoffs section (sandbox, AI quality, multi-
+                worker scale, datetime deprecation, widget count)
+              * Project layout diagram
+              * MIT license
+          - Updated .env.example: expanded the Ollama header comment
+            from a single line to a setup block — install, pull, serve
+            steps + note that hand-editing logic works without Ollama,
+            + note that OLLAMA_MODEL can be swapped for any model
+            `ollama pull` accepts.
+        VALIDATION:
+          - README.md: 166 lines; Ollama mentioned 10+ times across
+            Pitch, Prerequisites, Quickstart prereqs, Architecture
+            table, and Environment table; Quickstart heading at line 48
+          - .env.example: setup steps documented inline above the
+            OLLAMA_HOST/OLLAMA_MODEL vars
+        CITATIONS: [R008] minimal — docs only, no code; [C018] foreshadowed
+                   in README's mention of /ai/generate and "scoped to one
+                   widget handler".
+        SIDE NOTES:
+          - Step 23 (Demo + Polish) will expand the tradeoffs section
+            with the full list, including the SSE-multi-worker note and
+            the bash-CWD/curl-escaping learnings.
+        NEXT: STEP 19 — logiclive/ai.py. Async Ollama HTTP client using
+              httpx. Implements [C018] prompt assembly: DB schema +
+              sample rows + base_config + prior logic_code + /render
+              response schema, all injected into a system prompt. Calls
+              POST {OLLAMA_HOST}/api/generate with stream=True; returns
+              concatenated string. Includes a pytest that asserts the
+              prompt body contains all 5 ingredients.
+
+STEP 19 | 2026-05-30 | DONE
+        WHAT:
+          - logiclive/ai.py — pure helpers + async Ollama wrappers:
+              * RENDER_RESPONSE_SCHEMA constant — matches widgets_registry
+              * get_db_schema_text(engine) — inspects all tables + columns
+              * get_sample_rows_text(db, limit=3) — SELECT * LIMIT per
+                user table, skips internal `widgets` table; table names
+                come from inspector (safe to f-string into raw SQL)
+              * get_widget_base_config(db, screen_id, widget_id)
+              * get_widget_prior_logic(db, screen_id, widget_id)
+              * build_prompt(user_request, schema_text, sample_rows_text,
+                base_config, prior_logic) — assembles the [C018] 5-piece
+                prompt with === SECTION === delimiters and instructs the
+                model to output ONLY the Python function (no markdown
+                fences)
+              * call_ollama(prompt) — async POST to {OLLAMA_HOST}/api/
+                generate with stream=True, accumulates `response` tokens,
+                returns full string
+              * stream_ollama(prompt) — async generator yielding tokens
+                one at a time (Step 20's /ai/generate will use this for
+                SSE streaming)
+              * generate_logic(user_request, screen_id, widget_id, db) —
+                top-level orchestrator: build_prompt + call_ollama
+              OLLAMA_HOST / OLLAMA_MODEL read from env at import time
+              (acceptable — scalars, not mutable state, see C016 rationale).
+          - tests/test_ai.py — 12 tests, NO live Ollama call:
+              * 8 helper-level tests (schema text, sample rows, base
+                config getters, prior logic getter, missing-widget
+                cases)
+              * test_build_prompt_contains_all_C018_ingredients — the
+                EXPLICIT [C018] proof: verifies '=== DB SCHEMA ===',
+                '=== SAMPLE ROWS ===', '=== WIDGET base_config ===',
+                '=== PRIOR logic_code ===', '=== /render response
+                schema ===' all appear in the assembled prompt PLUS
+                user_request is threaded through
+              * test_build_prompt_handles_no_prior_logic — confirms
+                "(none — generate fresh)" placeholder appears
+              * test_build_prompt_C019_explicit_return_instruction —
+                system prompt instructs explicit return + render(params)
+              * test_build_prompt_forbids_markdown_fences — system
+                prompt says "no markdown fences"
+        VALIDATION:
+          - pytest tests/ -q → 51 passed (was 39; +12 new)
+          - test_build_prompt_contains_all_C018_ingredients → PASS
+            (this IS the [C018] proof the flow specified)
+        CITATIONS:
+          [C018] all 5 prompt ingredients enforced by build_prompt
+                 signature + verified by test;
+          [C019] system prompt instructs explicit return — full
+                 validation lives at /ai/generate (Step 20);
+          [R008] minimal — call_ollama / stream_ollama share most code
+                 but kept distinct because Step 21's UI needs streaming
+                 while CLI / scripted use needs the synchronous accumulator.
+        SIDE NOTES:
+          - get_sample_rows_text uses raw text(f"SELECT * FROM {name}")
+            — only safe because table_name came from inspector. Worth a
+            comment in the source.
+          - The deprecated datetime.utcnow() warnings keep accumulating
+            (~120 now). Will resolve in Step 23 polish.
+        NEXT: STEP 20 — /ai/generate endpoint. POST body
+              {screen_id, widget_id, prompt}. Calls ai.generate_logic.
+              [C019] post-check: if 'return' not in output, append a
+              fixup instruction + retry ONCE. Streams tokens via SSE
+              to the frontend. Test with mocked stream_ollama so we
+              don't need live Ollama in CI.
+
+STEP 20 | 2026-05-30 | DONE
+        WHAT:
+          BACKEND (logiclive/app.py):
+            - Imported ai helpers: build_prompt, get_db_schema_text,
+              get_sample_rows_text, get_widget_base_config,
+              get_widget_prior_logic, stream_ollama.
+            - AIGenerateRequest BaseModel — screen_id/widget_id/prompt
+              Optional[None] for explicit [C021]/[L026] guards.
+            - POST /ai/generate (async, returns EventSourceResponse):
+                1. [C021]/[L026] truthy guards on all 3 fields → 400
+                2. [C018] build_prompt with full context
+                3. async for token in stream_ollama(prompt):
+                     yield event: token data: {"text": tok}
+                4. [C019] retry-once gate: if accumulated text lacks
+                   "return", append fixup directive
+                   ("Your previous attempt did NOT end with an explicit
+                    `return`...") and stream_ollama again. Retry tokens
+                   marked with {"text": tok, "retry": True}.
+                5. Final event: done data: {full_text, has_return, retried}
+                6. event: error on any stream exception.
+          TESTS (tests/test_render.py):
+            - Three fake stream_ollama factories: good output, retry
+              (first bad / second good distinguished by IMPORTANT in
+              prompt), erroring.
+            - 6 new tests:
+                * missing_screen / missing_widget / missing_prompt → 400
+                * happy_path emits event: token + event: done + correct
+                  has_return + retried=false
+                * C019 retry — '"retry": true' tokens stream AND final
+                  done has has_return=true + retried=true (the [C019]
+                  proof)
+                * ollama errors propagate as event: error data: {message}
+            - All use monkeypatch.setattr("logiclive.app.stream_ollama", ...)
+              so live Ollama is NOT required for tests.
+        VALIDATION:
+          - pytest tests/ -q → 57 passed (was 51; +6 new for /ai/generate)
+          - C019 proof test is green: stream retries → has_return=true,
+            retried=true
+        CITATIONS: [C018] full prompt context assembled by build_prompt
+                   inside the handler (sync DB calls before async stream
+                   starts); [C019] retry-once gate; [C021]+[L026]
+                   explicit truthy guards.
+        SIDE NOTES:
+          - SSE response uses sse_starlette.EventSourceResponse same as
+            /events; existing test infrastructure handles it via r.text
+            (TestClient blocks until stream closes).
+          - Retry uses the same DB session — fine because we only read
+            from it after build_prompt; no race conditions.
+        NEXT: STEP 21 — ChatPanel.jsx (frontend). Scoped to currently
+              selected widget. User types a prompt, hits send →
+              POST /api/ai/generate; subscribes to the SSE response,
+              accumulates tokens into a diff view (proposed vs current),
+              Apply button → POST /api/save (Step 16). Editor passes
+              the widgetId + screenId props to ChatPanel.
+
+STEP 21 | 2026-05-30 | DONE
+        WHAT: Replaced Step 14 stub with full ChatPanel.jsx (~220 lines):
+          - SSE-over-POST helper: streamSSEPost(url, body, onEvent) uses
+            fetch + ReadableStream reader + TextDecoder; parseSSEFrame
+            splits on \n\n boundaries and parses event:/data: lines.
+            Trailing buffer flushed at EOF.
+          - State machine: idle → streaming → done → applying → applied
+            (or → error from any state).
+          - Transcript: list of {role, text} messages. User prompts +
+            system messages ("Applied ✓ — preview will refresh").
+          - Streaming UX:
+              * On 'token' with !data.retry → append to proposed buffer
+              * On 'token' with data.retry → REPLACE proposed buffer
+                ([C019] — discard the bad first attempt)
+              * On 'done' → set proposed to full_text, switch to 'done'
+              * On 'error' → surface inline
+          - Apply button (visible only when phase==='done'):
+              * POST /api/save with {screen_id, widget_id, logic_code}
+              * → backend Step 16 commits DB + Step 17 publishes SSE
+                'widget-changed' → LivePreview iframe reloads
+              * Phase 'applied' → after 600ms clear proposed for next round
+          - Input row: enter to send (shift-enter inserts newline),
+            send button disabled during streaming/applying, on widget
+            change everything resets.
+          - When widgetId is null, shows the "select a widget" stub.
+        VALIDATION:
+          - /src/editor/ChatPanel.jsx via Vite → 200
+          - Transpiled output contains expected wiring:
+              * streamSSEPost: defined+called (2)
+              * parseSSEFrame: defined+called (3)
+              * /api/ai/generate fetch (1)
+              * /api/save fetch (1)
+              * 13 phase references — proper state machine
+              * retry flag handling (1) — [C019] reset path
+        CITATIONS:
+          [C015] ChatPanel only writes logic_code via /api/save —
+                 base_config never sent (SaveRequest has no field for
+                 it; structural enforcement from Step 16);
+          [C017] /ai/generate SSE event shape consumed correctly
+                 (token / done / error);
+          [C019] retry tokens drop+replace buffer so the user sees the
+                 corrected output only;
+          [R008] minimal — no syntax highlighting, no markdown rendering,
+                 no command history persistence; <pre> block + simple
+                 buttons.
+        MILESTONE — PHASE 2E COMPLETE: The full AI-assisted editing
+          loop now works end-to-end:
+            1. Dev opens /editor?screen=sales_report
+            2. Picks a widget in WidgetTree (Step 15)
+            3. Monaco shows current logic_code (Step 16)
+            4. Types a prompt in ChatPanel (this step)
+            5. POST /api/ai/generate → SSE streams tokens (Step 20)
+            6. [C018] context (schema, samples, base_config, prior
+               logic, response schema) is in the prompt (Step 19)
+            7. [C019] retry-once enforces explicit return
+            8. Proposed code appears in the chat panel
+            9. Dev clicks Apply → POST /api/save (Step 16)
+            10. SSE 'widget-changed' fires (Step 17)
+            11. LivePreview iframe reloads — dev sees the AI change live
+          This IS the demo's "wow loop". Phase 2F (Steps 22-23) is
+          polish + video + GitHub push, not new functionality.
+        NEXT: STEP 22 — examples/sales_report.yaml + updated seed.py.
+              Materializes the YAML→DB pattern. Polishes the demo
+              widgets (current seed has Coke products with hardcoded
+              numbers — Step 22 makes the table look like a real
+              report). Step 22's output is what the dev demos in
+              the video.
+
+STEP 22 | 2026-05-30 | DONE
+        WHAT:
+          - examples/sales_report.yaml (NEW, ~120 lines): declarative
+            source for the demo screen. Each widget has widget_id,
+            base_config, and logic_code (multi-line YAML block scalar).
+            Embedded 17-row "orders" dataset across May 2026.
+            Per-widget logic:
+              * text.total_kpi  — sums filtered revenue, returns formatted
+                "Revenue (start → end): N,NNN" string. Styled bold blue 24px.
+              * table.results   — groupby product, sum qty + revenue,
+                sort desc by revenue, mark leader row with
+                _style: {background: #e6fff0}. Footer "N products · M orders".
+              * chart.revenue   — same data as Plotly bar trace.
+                Title includes the date window.
+              * input.start_date / input.end_date — static base_config,
+                kind=date, defaults 2026-05-01 / 2026-05-15.
+          - examples/seed.py (REWRITTEN, 50 lines): seed_from_yaml(path)
+            reads YAML via yaml.safe_load, wipes screen, inserts all
+            widgets. Idempotent.
+        VALIDATION:
+          - `python examples/seed.py` → "Seeded 5 widgets for
+            screen_id='sales_report' from sales_report.yaml"
+          - End-to-end via curl on :8000:
+              * KPI default window → "Revenue (2026-05-01 → 2026-05-31):
+                10,200" with the styled bold-blue props
+              * Table May 1-15 → 4 products, 14 orders, Coke 500ml as
+                leader (4000 rev) with green _style, sorted desc
+              * Table May 1-5 → DIFFERENT result: 4 products, 6 orders,
+                Coke 500ml leader at 2200 — proving start_date/end_date
+                params actually filter the embedded dataset
+              * Chart returns valid Plotly bar: type=bar, x=4 products,
+                y=4 values, layout.title includes the date window
+          - pytest tests/ -q → 57 passed (no regression)
+        CITATIONS: [C014] YAML uses canonical fields; [C015] note in
+                   YAML header: post-edit logic_code lives in DB, not
+                   the YAML — the file is the initial seed only;
+                   [C019] every logic_code ends with explicit return;
+                   [R008] minimal — embedded dataset (not a separate
+                   orders table) keeps polish in one file.
+        SIDE NOTES:
+          - The "embedded 17-row dataset" duplicated across 3 widgets
+            is a deliberate tradeoff: makes each widget self-contained
+            for the sandbox subprocess (no shared module), at the cost
+            of duplication. In real LogicLive use, widgets would query
+            a shared orders table — but the sandbox allowlist for
+            sqlite3 (from C007 / Step 5) supports that path; just not
+            wired in this demo.
+          - The leader-row green highlight uses table widget's per-row
+            _style support added in Step 12. First in-demo proof that
+            the optional row-style hook works.
+        DEMO READINESS:
+          - /app?screen=sales_report shows: 2 date inputs · bold blue
+            KPI revenue · 4-row table with green leader · Plotly bar
+          - Changing start_date in the UI → all 3 logic widgets refetch
+            with the new param, KPI/table/chart all update
+          - /editor?screen=sales_report shows: WidgetTree (5 widgets,
+            colored type badges) · Monaco loading the selected widget's
+            logic · LivePreview iframe · ChatPanel ready to accept
+            "modify this" requests via local Ollama
+        NEXT: STEP 23 — Final polish. Update README's tradeoffs section
+              with all the accumulated learnings (bash-CWD drift, curl
+              -w with $() escaping, Vite proxy port matching, SSE
+              multi-worker note, datetime.utcnow() deprecation). Sketch
+              an ASCII architecture diagram in README. Demo rehearsal
+              flow. Then record the 5-7 min video covering Problem
+              Framing → System Design → Tradeoffs → Failure Modes per
+              the Damco brief. Push to public GitHub. Draft the
+              submission email (do NOT send until user reviews).
+
+STEP 23 | 2026-05-30 | IN PROGRESS (docs done; external steps pending)
+        WHAT — DONE NOW (in BLAST RADIUS):
+          README.md polish:
+            - Added compact ASCII architecture diagram in the
+              Architecture section (Browser → Vite proxy → FastAPI →
+              [SQLite | Sandbox subprocess | Ollama]) with the 4 key
+              citations (C014/C015/C016/C019) inlined as a legend.
+            - Expanded Honest tradeoffs section from 5 bullets to 13:
+              Architecture & scale (sandbox, AI quality, multi-worker,
+              latency, isolation); Code surface & limits (widget count,
+              no layout editor, no real diff view, no version history);
+              Known papercuts (datetime deprecation, asyncio_mode);
+              and the "Deterministic shell, AI brain" decision table.
+          (Demo rehearsal + email draft are below in THIS file — kept
+          out of separate new files to respect the BLAST RADIUS.)
+
+═══════════════════════════════════════════════════════
+DEMO REHEARSAL — 5-7 MIN VIDEO SCRIPT
+═══════════════════════════════════════════════════════
+Target duration: 5-7 min total. Damco brief structure:
+  Problem Framing (2-3 min)
+  System Design   (5-6 min) — overlaps "live demo" below
+  Tradeoffs       (3-4 min)
+  Failure Modes   (2 min)
+
+Open in two terminals + browser tabs before recording:
+  Terminal A : .venv/bin/uvicorn logiclive.app:app --reload --port 8000
+  Terminal B : cd frontend && npm run dev
+  Terminal C : ollama serve  (already running)
+  Browser    : (1) localhost:5173/app?screen=sales_report
+               (2) localhost:5173/editor?screen=sales_report
+
+───────────────────────────────────────────────────
+SCENE 1 — Problem framing (face cam, ~2 min)
+───────────────────────────────────────────────────
+"At MathCo I built an internal UI-as-Code framework so data scientists
+could ship apps without touching React. Pattern that kept biting us:
+every time someone asked 'can the table exclude refunds', it was a
+full dev cycle — branch, edit, PR, deploy. Days, not minutes. So I
+asked: what if the app's logic lived in a database, and you could just
+chat with AI to edit it live? That's LogicLive."
+
+[Show damco_task.txt brief side-by-side, then resume face cam]
+"I'm submitting LogicLive for Track A — Engineer."
+
+───────────────────────────────────────────────────
+SCENE 2 — System design + live demo (~2-3 min)
+───────────────────────────────────────────────────
+[Switch to Browser tab 1 — /app?screen=sales_report]
+"End-user view of a sales report. Two date inputs, a KPI text, a
+table with a green leader row, a bar chart. Standard internal tool."
+[Change start_date from 2026-05-01 to 2026-05-05]
+"Watch: the KPI, table, and chart all update — the inputs are wired
+to all three widgets. That's the Server-Driven UI pattern in action:
+the frontend is generic, the backend computes per-widget."
+
+[Switch to /editor?screen=sales_report]
+"Now the editor. Three panes — widget tree, code editor over a live
+preview, and a chat panel on the right. The preview iframe is the
+same /app screen, subscribed to SSE so it auto-reloads."
+
+[Click on table.results in WidgetTree]
+"Logic for the table widget loads in Monaco. I can edit by hand…"
+[Change "_style": {"background": "#e6fff0"} to "#ffe6e6"]
+[Press Ctrl+S]
+"…save. Preview reloads. Leader row is now pink."
+
+[Switch to chat panel, click chat]
+"Or I can ask the AI. This calls a local Ollama model — no API key,
+no data leaves my machine. Critical for an internal tool."
+[Type: "show top 3 only"]
+"Behind the scenes: server assembles a prompt with the DB schema,
+sample rows, the widget's base_config, and the prior code — then
+streams tokens from Ollama. If the response doesn't end with `return`,
+it retries once with a fixup directive."
+[Wait for stream, click Apply]
+"Save fires the SSE event, preview reloads. Three rows now."
+
+───────────────────────────────────────────────────
+SCENE 3 — Architecture diagram (~1 min)
+───────────────────────────────────────────────────
+[Show README ASCII diagram on screen]
+"The whole thing in one picture: browser hits Vite, proxied to
+FastAPI, which fetches logic from SQLite, runs it in a sandboxed
+subprocess per request, returns the config-with-data. The /save
+endpoint commits to DB and publishes an SSE event. The AI client
+talks to local Ollama over HTTP. SQLAlchemy 2, asyncio, sse-starlette."
+
+───────────────────────────────────────────────────
+SCENE 4 — Tradeoffs (face cam, ~1.5 min)
+───────────────────────────────────────────────────
+"Three calls I'd defend on a whiteboard:
+ 1. Deterministic shell, AI brain. UI config is dev-only YAML. AI
+    is structurally not allowed to touch it — the SaveRequest model
+    has no base_config field. This sidesteps Bolt/v0's failure mode
+    where AI rewrites layouts between sessions.
+ 2. Subprocess sandbox, not full isolation. Good for MVP and demos.
+    For real multi-tenant hostile use, switch to containers or WASM.
+ 3. SSE for live preview, asyncio.Queue for fan-out. Works for a
+    single uvicorn worker. Multi-worker needs Redis pub/sub — that's
+    a 50-line swap, not a redesign."
+
+───────────────────────────────────────────────────
+SCENE 5 — Failure modes (face cam, ~1 min)
+───────────────────────────────────────────────────
+"Three failure paths the system handles gracefully:
+ 1. AI generates code that errors at runtime — sandbox catches the
+    exception and the /render response carries {error: {type, message}}.
+    Frontend shows a red widget; the rest of the screen still works.
+ 2. AI generates code with no `return` — server retries once with a
+    fixup prompt. Test asserts this works.
+ 3. Ollama is down — /ai/generate streams an error event; the editor
+    keeps the user's prior code intact and shows the error inline.
+What's not handled: malicious user code escaping the subprocess. That's
+the WASM / container story for v2."
+
+[Close on README screen + repo link]
+"Code's on GitHub. Thanks."
+
+═══════════════════════════════════════════════════════
+SUBMISSION EMAIL DRAFT
+═══════════════════════════════════════════════════════
+TO     : hiring@damcogroup.com
+SUBJECT: Builder Challenge - Sagar Kanake - Track A
+
+Hi Damco team,
+
+For the Builder Challenge (Track A — Engineer), I built **LogicLive**:
+a Server-Driven UI platform for internal tools where business logic
+lives in a database and can be edited by hand or via a scoped local
+AI chat. No deploy needed for logic changes.
+
+Repository : <FILL IN GitHub URL after push>
+Video      : <FILL IN YouTube unlisted URL after upload>
+Architecture doc : repo README.md
+
+Quick context on the problem: at MathCo I built an internal UI-as-Code
+framework for the data-science team. The pattern that kept biting us
+was that every business-rule change ("exclude refunds from totals",
+"add a date filter") meant a full dev cycle. LogicLive moves that
+class of change out of the deploy loop entirely — the logic lives in
+the DB, an editor edits it live, and a local AI can rewrite it without
+ever sending company data to a third-party API.
+
+Stack: Python 3.11+ / FastAPI / SQLAlchemy 2 / React 18 / Vite 5 /
+Monaco / react-plotly.js / Ollama (qwen2.5-coder:7b).
+
+About me: Full-Stack GenAI engineer, 4 years building LLM apps and
+internal tools at MathCo (Bengaluru) and Digitalflake (Pune). LinkedIn
+and GitHub in my signature.
+
+Happy to walk through the system on a call.
+
+Best,
+Sagar Kanake
++91 9284898350 · sagarkanke33@gmail.com
+
+═══════════════════════════════════════════════════════
+EXTERNAL CHECKLIST — YOU MUST DO THESE
+═══════════════════════════════════════════════════════
+[ ] 1. Run the demo end-to-end yourself. Confirm:
+        a. /app?screen=sales_report renders cleanly
+        b. Changing start_date updates all 3 widgets
+        c. /editor allows clicking a widget → seeing Monaco load it
+        d. Ctrl+S in Monaco → preview iframe reloads within 1s
+        e. Chat panel: ask AI to modify a widget → tokens stream in →
+           Apply → preview reflects the change
+[ ] 2. Init a git repo if not already; commit everything
+        git init && git add -A && git commit -m "LogicLive MVP"
+[ ] 3. Create a public GitHub repo (gh repo create logiclive --public
+        --source=. --remote=origin --push)
+[ ] 4. Record the 5-7 min video using the rehearsal script above
+[ ] 5. Upload video to YouTube as Unlisted
+[ ] 6. Update the email draft with the actual GitHub + YouTube URLs
+[ ] 7. Send the email from sagarkanke33@gmail.com
+[ ] 8. After confirmation, tell Claude "task complete and submitted"
+       so this task can be marked COMPLETE
+
+═══════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════

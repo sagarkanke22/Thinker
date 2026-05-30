@@ -1,0 +1,558 @@
+═══════════════════════════════════════════════════════
+SYSTEM RULES AND LEARNING — Global Knowledge Base
+═══════════════════════════════════════════════════════
+Applies across ALL tasks. Append only. No overwriting.
+───────────────────────────────────────────────────────
+
+## UNIVERSAL RULES
+
+R001 | Always read active_task_state.txt before any non-init action
+R002 | One step per iteration — never batch multiple changes
+R003 | Validate after every step — stop on failure
+R004 | Never assume missing values — ask the user
+R005 | Never modify another task's files
+R006 | Read a file before editing it — never assume structure
+R007 | When string replacement fails due to multiple matches, add more surrounding context
+R008 | Match indentation exactly — Python is whitespace-sensitive
+R009 | Do not add features, refactor, or clean up code beyond what was asked
+R010 | Do not add error handling for scenarios that cannot happen
+
+───────────────────────────────────────────────────────
+
+## CODEBASE RULES — IntegratedPlanning
+
+C001 | Backend logic lives in view_supply_plan_working.py (single large file)
+C002 | Frontend table: CollapsibleExcelTable → ExcelTable → utils.js (Silevis ReactGrid)
+C003 | Cell background color comes from row[col?.cellParamsField]?.backgroundColor in utils.js
+      → Set it in the _params dict in update_rowdata() in the Python row loop
+      → NOT from coldef headerBgColor or colBgColor (those are ignored by ExcelTable)
+C004 | Header background is hardcoded #1A1A1A in utils.js line 132 — do not change unless asked
+C005 | Lyric scheduling data is in a SEPARATE DB schema:
+        lyric_planning.FACT_SUPPLY_PLANNING_ANALYSE_SCENARIO_MEET_SERVICE_LEVEL
+      → NOT in koplanner_application schema
+C006 | Lyric compare detection: compare_scenario.endswith(' Scheduling')
+C007 | do_not_compare = True when Lyric compare is active — skips scenario split
+C008 | Blue shade palette for scheduled columns — level-based in update_rowdata():
+        level_0: #f5fdfd, level_1: #e8f9fa, level_2: #d9f4f5,
+        level_3: #b8e8ea, level_4: #d9f4f5, level_5: #b8e8ea
+C009 | Scheduled columns must be added to ordered_col_list BEFORE the df column filter
+C010 | Scheduled DC Utilization % is a computed column (not from DB):
+        Scheduled End Inventory / Total Capacity N * 100 — computed before Total Capacity N is dropped
+C011 | leftToolbarActions buttons rendered after <Box flex={1}/> in ExcelTableToolBar.jsx
+C012 | Banner appears in second toolbar row alongside TableToolBar in CollapsibleExcelTable.jsx
+C013 | _params dict keys: pct, dir, backgroundColor — all spread into cell style via utils.js
+
+───────────────────────────────────────────────────────
+
+## CODEBASE RULES — LogicLive (Damco Builder Challenge)
+
+C014 | TYPE: ARCHITECTURE / VOCABULARY
+       SDUI vocabulary is FIXED. Use these exact terms in code, comments,
+       docs, and AI prompts:
+         - widget_id     : unique within a screen
+         - screen_id     : unique within an app
+         - base_config   : declarative widget shape (YAML/JSON), DEV-WRITTEN
+         - logic_code    : Python function string in DB, DEV-OR-AI written
+         - render config : merged output of /render (base + data + style)
+       WHY: Vocabulary drift breaks the contract between renderer, runtime,
+            and AI prompts.
+
+C015 | TYPE: ARCHITECTURE
+       UI config (base_config) is HUMAN-ONLY. AI must NEVER write or modify
+       base_config rows. "Deterministic shell, AI brain."
+       WHY: Letting AI touch layout undoes the architecture decision that
+            differentiates LogicLive from Bolt/v0.
+
+C016 | TYPE: RUNTIME
+       Every /render call = fresh sandboxed Python subprocess. Module-level
+       state MUST NOT carry between handler invocations.
+       WHY: Stale state across requests is the most expensive bug class.
+       SEE ALSO: L032 (same pattern, inherited) — directly applicable.
+
+C017 | TYPE: API CONTRACT
+       /render signature is FIXED:
+         GET /render?screen_id=X&widget_id=Y&params=<urlenc-json>
+         Response: { type, props, data, style?, error? }
+       WHY: Frontend is generic. Contract drift breaks every screen.
+
+C018 | TYPE: AI-CODEGEN
+       AI prompts for logic_code MUST include: DB schema for reachable
+       tables, 1-3 sample rows per table, the widget's base_config, prior
+       logic_code (if editing), and the /render response schema.
+       WHY: Without grounded context AI invents column names → silent fail.
+
+C019 | TYPE: AI-CODEGEN
+       Generated logic_code MUST end with an explicit `return` of a dict
+       matching the /render response shape. Runtime rejects code without
+       explicit return.
+       WHY: Implicit None returns produce confusing client errors.
+
+C020 | TYPE: SAFETY
+       All logic_code runs in a subprocess (MVP) with timeout + memory cap
+       + import allowlist + no filesystem writes.
+       WHY: Untrusted DB-stored code is the highest-risk surface.
+
+C021 | TYPE: API GUARDS
+       Per L026: add explicit endpoint-level guards on screen_id and
+       widget_id inside the handler. Pydantic with default= silently
+       passes missing fields — never trust validation alone.
+
+───────────────────────────────────────────────────────
+
+## LEARNINGS (append new entries below)
+
+L001 | DATE: 2026-04-04
+      TYPE: GENERIC
+      LEARNING: headerBgColor set in coldef has no effect in ExcelTable/utils.js.
+                Cell color must come from row._params.backgroundColor in Python row loop.
+      ROOT CAUSE: utils.js generateHeaderCells hardcodes background: "#1A1A1A" after spread.
+                  Cell style uses ...row[col?.cellParamsField] spread — only _params works.
+
+L002 | DATE: 2026-04-04
+      TYPE: GENERIC
+      LEARNING: Blue shading must be applied in update_rowdata() AFTER level is assigned,
+                not in the first row loop pass (where level is not yet known).
+      ROOT CAUSE: level key is set in the second pass (rank_map loop). First pass has no level.
+
+L003 | DATE: 2026-04-04
+      TYPE: CODEBASE
+      LEARNING: DC Util tab callback path (collapsible_excel_table_5) uses selected_dim_dc_util.
+                Must ensure compare key is set on selected_dim_dc_util for Lyric detection to work.
+      ROOT CAUSE: tab_switch callback sets compare on drop_down_dict, not always on selected_dim_dc_util.
+
+L004 | DATE: 2026-04-04
+      TYPE: GENERIC
+      LEARNING: Column header subtext in view_supply_plan_working.py is set via
+                'subHeaderName': 'text' inside the col_props dict entry for that column.
+                This renders below the main header name in the ReactGrid ExcelTable.
+      ROOT CAUSE: subHeaderName is a supported col_props key passed through to the frontend
+                  grid column definition — not a custom field, it is natively rendered.
+
+L005 | DATE: 2026-04-04
+      TYPE: GENERIC
+      LEARNING: When the data column key (e.g. 'Scheduled Allocated Production') differs from
+                the desired UI display name (e.g. 'Scheduled Production'), add
+                'headerName': 'Scheduled Production' to the col_props dict.
+                This overrides the display label without renaming the data column.
+      ROOT CAUSE: col_props keys are data column names by default; headerName provides a
+                  separate display name used only in the column header render.
+
+L006 | DATE: 2026-04-04
+      TYPE: GENERIC
+      LEARNING: When making sequential edits to view_supply_plan_working.py (a 12000+ line file),
+                line numbers shift after each edit. Never rely on pre-recorded line numbers.
+                Always grep or read the surrounding context to locate the exact current line
+                before each edit.
+      ROOT CAUSE: Each insertion or deletion shifts all subsequent line numbers. Pre-recorded
+                  line numbers become stale after the first edit in the same session.
+
+L007 | DATE: 2026-04-05
+      TYPE: GENERIC
+      LEARNING: If the dropdown defaultValue in the response is CORRECT (has all expected items)
+                but the coldef and rowData are MISSING those columns, the bug is a timing issue:
+                the list that controls data-fetch is modified in-place AFTER the fetch runs.
+                Diagnose by checking whether the metrics list is used as a gate inside the
+                data-fetch function — if so, inject the missing value BEFORE the fetch call.
+      ROOT CAUSE: In-place list modification in generate_*() runs after get_processed_*() has
+                  already used the unmodified list as a fetch gate. defaultValue is correct
+                  because it references the same list object (modified in-place after fetch),
+                  but the data was never retrieved.
+
+L008 | DATE: 2026-04-05
+      TYPE: GENERIC
+      LEARNING: When compare-switch sends only the currently-selected metrics (not the full
+                post-compare set), any column that depends on a NEW metric being present in
+                the metrics list at fetch time will be missing on the first call. Fix by
+                pre-injecting required values into the metrics list before the data fetch,
+                guarded by the compare type detection (e.g. endswith(' Scheduling')).
+      ROOT CAUSE: Frontend sends dropdownValues.metrics = current selection at the time of
+                  the compare-switch event — it does not know what new columns the compare
+                  will add until the backend responds with the updated defaultValue.
+
+───────────────────────────────────────────────────────
+
+L009 | DATE: 2026-04-06
+      TYPE: GENERIC
+      LEARNING: When using MUI Paper with custom borders, always add border: 'none' to the
+                makeStyles class AND set all 4 sides explicitly via inline style on the element.
+                Do NOT use borderLeftWidth/Color/Style separately — this causes all borders
+                to appear thick. Use: borderTop/Right/Bottom: 'Xpx solid color' and
+                borderLeft: 'Ypx solid color' as separate inline style properties.
+      ROOT CAUSE: MUI Paper has default border/shadow styles that conflict with partial
+                  inline border overrides. The CSS class border must be reset to 'none'
+                  before inline styles take full control.
+
+L010 | DATE: 2026-04-06
+      TYPE: GENERIC
+      LEARNING: Always reuse CodxToggleSwitch (src/components/custom/CodxToggleSwitch.jsx)
+                for toggle UI in this codebase. Do NOT create custom Switch wrappers with
+                withStyles. The withStyles approach is fragile with MUI v4 theme overrides
+                and requires targeting ALL internal class names (switchBase, thumb, track,
+                checked) simultaneously to work correctly.
+      ROOT CAUSE: MUI v4 Switch has very specific internal class name dependencies.
+                  Partial withStyles overrides are silently ignored when theme defaults win.
+
+L011 | DATE: 2026-04-06
+      TYPE: GENERIC
+      LEARNING: When using CodxToggleSwitch, import path depth depends on the file location.
+                From KPIDashboard/ (4 levels deep from src/): use '../../../../components/custom/CodxToggleSwitch'
+                From coke/ (3 levels deep): use '../../../components/custom/CodxToggleSwitch'
+                Always verify relative import depth from the file's actual location.
+      ROOT CAUSE: Copied import path from AdditionalToolbar.jsx (coke/ level) without
+                  adjusting for the extra directory depth of KPIDashboard/.
+
+L012 | DATE: 2026-04-06
+      TYPE: GENERIC
+      LEARNING: PlotGrids component uses a static key by default. When accordion data updates
+                (e.g. after toggle_change), React does NOT remount PlotGrids because the key
+                never changes — so internal state (viewModes, plotRenderKeys) is stale.
+                Fix: include plot IDs in the key so PlotGrids remounts when plots change.
+                key={`plot-${title}-${JSON.stringify(plots?.map(p => p.id))}`}
+      ROOT CAUSE: React component identity is determined by key. Static key = same component
+                  instance = stale internal state even when props change.
+
+L013 | DATE: 2026-04-06
+      TYPE: GENERIC
+      LEARNING: When a new accordion section needs a toggle that controls graphs, do NOT add
+                it to the plot's rmpmToolbar (that is per-plot). Instead:
+                1. Backend returns showVolumeToggle: True in the accordion final_data
+                2. AccordionSection renders the toggle only when showVolumeToggle is present
+                3. Toggle fires toggle_change action_type to backend
+                4. Backend regenerates both graphs with show_volume param
+                5. Response includes updateAllPlots: True to force PlotGrids remount
+                This pattern keeps toggle logic isolated per accordion without affecting others.
+      ROOT CAUSE: Inventory graph toggle is per-plot (rmpmToolbar). Plan Attainment needed
+                  a cross-plot toggle — required a different pattern at accordion level.
+
+L014 | DATE: 2026-04-06
+      TYPE: GENERIC
+      LEARNING: KPI card columns labelled "as % of X" should ALWAYS display percentage values
+                regardless of any volume/percentage toggle. The toggle should only affect
+                columns that are genuinely dual-mode (e.g. Demand = volume OR %).
+                Do not apply toggle logic to columns whose label already specifies the unit.
+      ROOT CAUSE: Applied toggle logic uniformly to all columns. Columns with "as %" in their
+                  label are percentage-only by definition — they should never show volume.
+
+───────────────────────────────────────────────────────
+
+L015 | DATE: 2026-04-06
+      TYPE: GENERIC
+      LEARNING: When any KPI or graph query uses a closing week date as plan_end_date gate
+                in INFO_SUPPLY_PLANNING_OVERVIEW (WHERE plan_end_date IN (...)), future or
+                unplanned dates return 0 rows → empty df → KPI shows 0 or graph crashes.
+                Fix pattern: resolve each closing week individually BEFORE building the SQL tuple:
+                  SELECT MAX(plan_end_date) FROM INFO_SUPPLY_PLANNING_OVERVIEW
+                  WHERE status='Published' AND version_id='S&OP' AND plan_end_date <= '{cw}'
+                Use resolved date in the query. Deduplicate resolved list. Skip NULLs.
+                Do NOT modify global closing week variables — resolve locally only.
+      ROOT CAUSE: KO calendar closing weeks are computed from calendar data and may include
+                  future month-end dates (e.g. '2026-05-01') for which no S&OP plan has been
+                  published yet. The plan gate query returns 0 rows for these dates.
+
+L016 | DATE: 2026-04-06
+      TYPE: GENERIC
+      LEARNING: In generate_inventory_graph() → get_inventory_data(), DIMENSION MODE sets
+                week_tuple = last closing week (e.g. '2026-05-01'). If no plan exists for
+                that date, the main query returns empty df → inventory_calculation() never
+                runs → 'Closing Inventory' column is never added → aggregate_inventory_data()
+                crashes with KeyError: 'Closing Inventory' → generate_inventory_graph()
+                returns None → TypeError unpacking in caller.
+                Fix: apply the same per-week resolution (L015 pattern) to both:
+                  1. week_list_tuple used in Plan_Info CTE
+                  2. week_tuple used in DIMENSION MODE WHERE i.plan_id IN clause
+      ROOT CAUSE: Same root cause as L015 — unplanned future closing week used as plan gate.
+                  The cascade of failures (empty df → missing column → KeyError → None return)
+                  makes the symptom appear as a TypeError in the caller, not at the source.
+
+───────────────────────────────────────────────────────
+
+L017 | DATE: 2026-04-06
+      TYPE: GENERIC
+      LEARNING: The radio_change / plant_graph_change action handler does NOT re-initialize
+                ko_weeks_in_date_format, ko_closing_weeks, or selected_ko_months from
+                levelDropdown. These globals retain stale values from the previous action
+                (e.g. QTD weeks when user switches to DC view with YTD selected).
+                Fix: At the start of the radio_change handler, read levelDropdown from
+                screen_data, call get_months_based_on_view + get_closing_weeks_based_on_view,
+                rebuild ko_weeks_in_date_format from ko_hierarchy, and declare all three
+                as global before assigning.
+                Pattern applies to any action_type handler that calls graph functions
+                without going through default_load().
+      ROOT CAUSE: radio_change is a graph-update action, not a level-change action.
+                  It bypasses the initialization block that sets week globals.
+                  The levelDropdown value in the payload is ignored unless explicitly read.
+
+L018 | DATE: 2026-04-06
+      TYPE: GENERIC
+      LEARNING: In Python, assigning to a module-level variable inside a nested block
+                (e.g. elif inside a try inside main()) creates a LOCAL variable unless
+                'global varname' is declared first. Without the global declaration,
+                the assignment silently creates a local variable — the module-level global
+                is NOT updated, and functions that read 'global varname' still see the
+                old value.
+                Always add 'global ko_weeks_in_date_format', 'global ko_closing_weeks',
+                'global selected_ko_months' before any assignment to these variables
+                inside action handlers.
+      ROOT CAUSE: Python scoping rules — assignment in a nested scope creates a new local
+                  binding unless explicitly declared global. No error is raised, making
+                  this a silent bug that is hard to diagnose from symptoms alone.
+
+───────────────────────────────────────────────────────
+
+[ALL] — dtype mismatch on DataFrame merge with category columns:
+  When merging DataFrames on category/string key columns, an empty source
+  DataFrame defaults those columns to float64 while non-empty ones keep object.
+  merge() fails or silently drops rows when key dtypes differ across sides.
+  Fix: cast all join-key columns to str before every merge, unconditionally.
+
+L019 | DATE: 2026-04-09
+      TYPE: GENERIC
+      LEARNING: When a function name is defined more than once in the same scope,
+                Python uses the LAST definition. A simplified local redefinition
+                can shadow the full version, causing TypeError when arguments
+                valid for the full version are passed at a call site resolved to
+                the simpler one. Always grep for all `def <function_name>` before
+                adding new parameters to any call site.
+      ROOT CAUSE: view_supply_plan.py has two def get_drop_down_dict — a full version
+                  (with compare_default_value) and a simpler Supply Overview version
+                  without it. Step 4 passed compare_default_value to the wrong one.
+
+L020 | DATE: 2026-04-09
+      TYPE: GENERIC
+      LEARNING: Python default arguments in nested function definitions are captured
+                at DEFINITION time, not call time. If the variable used as default
+                is conditionally updated after the def statement, callers relying on
+                the default will always see the original value. Pass the variable
+                explicitly at every call site that needs the updated value.
+      ROOT CAUSE: get_processed_*_tab_data functions use compare_scenario=compare_
+                  scenario_default_value as default arg — captured as "" when the
+                  def runs, before Part 1 sets the scheduling value. Explicit pass
+                  at each call site is the only reliable fix.
+
+L021 | DATE: 2026-04-09
+      TYPE: GENERIC
+      LEARNING: To pre-select a dropdown option, only set the default value variable.
+                Do NOT filter the options list itself — that removes user choice.
+                Pattern: set default_value = target_option; leave options list unchanged.
+      ROOT CAUSE: Part 1 set all_iterations = _scheduling_options, which replaced
+                  all compare options with only scheduling ones. User requirement
+                  was pre-selection only, not restriction of available options.
+
+L024 | DATE: 2026-04-10
+      TYPE: CODEBASE
+      LEARNING: TABLE_UPLOAD_KEY_COLS in complete_workflow.py maps table names to
+                DICTS: {"cols": ["col1", "col2"], "label": "..."}.
+                Always extract "cols" before iterating:
+                  key_cfg = TABLE_UPLOAD_KEY_COLS.get(table_name)
+                  key_cols = key_cfg["cols"] if key_cfg else []
+                Do NOT do TABLE_UPLOAD_KEY_COLS.get(table_name, []) and iterate
+                directly — that iterates over dict keys ("cols", "label"), not
+                column names, so all(c in df.columns ...) is always False.
+
+                ALSO: "cols" values must match the DataFrame column names from
+                the query SELECT — NOT the underlying DB column names.
+                supply_plan_sku_dc query returns 'dc' (aliased), not
+                'source_location_id'. Always verify against the query file,
+                not the DB schema, when adding a new table to the dict.
+      ROOT CAUSE: TABLE_UPLOAD_KEY_COLS changed format from plain list to dict.
+                  Consumption code was not updated. Also, sku_dc "cols" was set
+                  using the DB schema name (source_location_id) instead of the
+                  query alias (dc), so all(c in df.columns ...) silently failed.
+
+───────────────────────────────────────────────────────
+
+L022 | DATE: 2026-04-10
+      TYPE: FLOW
+      LEARNING: Inline bug fixes during execution must append a DEBUG ENTRY to the
+                active context file before the fix is applied. URGENT fixes that skip
+                full FIX flow still require a DEBUG ENTRY in the context file after
+                confirmation. Update FIX APPLIED + LESSON fields once fix is confirmed.
+      ROOT CAUSE: Fixes applied without context file updates leave no history.
+                  Learnings cannot be derived from a session with no debug trail.
+
+L023 | DATE: 2026-04-10
+      TYPE: FLOW
+      LEARNING: At TASK COMPLETION GATE, check context file for DEBUG ENTRYs written
+                this session. If any exist, auto-propose the strongest LESSON in one
+                exchange (confirm / refine / skip). Do NOT wait for user to say
+                'derive learning' — the prompt is automatic after task close.
+      ROOT CAUSE: DEFERRED LEARNING = YES was set but rarely acted on.
+                  Learnings were lost because the trigger was manual and easily skipped.
+
+L025 | DATE: 2026-04-20
+      TYPE: GENERIC
+      LEARNING: When a named identifier (e.g. "KGBPL") should resolve to the default/base
+                value (no suffix), normalize it (strip + upper) and check equality before
+                building a suffixed string. Using it directly as a suffix creates a name
+                that does not exist.
+      ROOT CAUSE: String-based routing passes named identifiers straight to suffix
+                  construction without recognizing them as "no suffix" cases.
+
+L026 | DATE: 2026-04-20
+      TYPE: GENERIC
+      LEARNING: FastAPI Pydantic models with default= values never raise validation errors
+                for missing/null fields — the default silently fills in. Add explicit
+                endpoint-level guards when fields are truly required at runtime.
+      ROOT CAUSE: Pydantic validates type/format only. Defaults mask missing data from
+                  callers and allow silent execution with wrong parameters.
+
+L027 | DATE: 2026-04-20
+      TYPE: GENERIC
+      LEARNING: When a shared notification function serves multiple operation types,
+                detect the type from the results payload and use conditional strings
+                for subject, heading, and body. Never hardcode strings for one type.
+      ROOT CAUSE: Hardcoded strings in shared handlers produce wrong messaging for all
+                  non-primary operation types — silently, with no error raised.
+
+L028 | DATE: 2026-04-20
+      TYPE: GENERIC
+      LEARNING: To override MUI v4 Tooltip to white background + black text, override BOTH
+                `tooltip` class {backgroundColor:'#fff', color:'#222', border:'1px solid #ccc'}
+                AND `arrow` class {color:'#fff', "&::before":{border:'1px solid #ccc'}} in makeStyles.
+      ROOT CAUSE: MUI Tooltip arrow color is set independently via its own CSS class — not
+                  inherited from the tooltip background. Without overriding arrow class, the
+                  arrow stays dark even when the tooltip box is white.
+
+C013 | DATE: 2026-04-20
+      TYPE: CODEBASE
+      LEARNING: leftToolbarActions button dicts in view_supply_plan.py accept optional
+                `disabled: True` and `tooltip: "..."` fields. ExcelTableToolBar.jsx destructures
+                these and wraps the Button in <Tooltip><span> when disabled is truthy.
+      ROOT CAUSE: ExcelTableToolBar.jsx isDownload render block was extended to support this
+                  pattern. Any backend leftToolbarActions button can now be conditionally
+                  disabled with a dynamic tooltip message using **{...} spread on the dict.
+
+L029 | DATE: 2026-04-20
+      TYPE: CODEBASE
+      LEARNING: All pd.read_sql_query calls against lyric_planning.* tables in view_supply_plan.py
+                should include WITH (NOLOCK) after the table name. These are read-only queries
+                on a shared reporting DB — default locking adds contention and wait time.
+      ROOT CAUSE: SQL Server acquires shared locks by default on SELECT. On a shared reporting DB
+                  with concurrent writers, this causes blocking. WITH (NOLOCK) eliminates the
+                  wait without affecting read-only result correctness for these use cases.
+
+L030 | DATE: 2026-04-20
+      TYPE: CODEBASE
+      LEARNING: If a SELECT TOP 1 * column-detection query runs on every page load to determine
+                a column name that is stable (e.g., lyric_plan_col = 'plan_id' vs 'week_end_date'),
+                remove the query and hardcode the assignment. Saves 1 DB round trip per load.
+      ROOT CAUSE: lyric_planning.FACT_SUPPLY_PLANNING_PLANT_LINE_UTILIZATION always has plan_id.
+                  The fallback to week_end_date was defensive code that never triggered in practice.
+
+L031 | DATE: 2026-04-20
+      TYPE: CODEBASE
+      LEARNING: When multiple leftToolbarActions blocks (SKU-DC, Plant-Line, DC Util) each ran
+                a separate SELECT TOP 1 availability check, consolidate into one shared
+                _sched_data_available flag. Declare unconditionally before the first block
+                (satisfies L018), assign inside try/except (satisfies L017), reference in all 3
+                button dict spreads using: if not _sched_data_available. Saves 2 DB round trips.
+      ROOT CAUSE: Each tab had its own _sched_btn_disabled_* variable querying the same table
+                  with the same iteration_id + version_id. The result is identical across all 3.
+
+───────────────────────────────────────────────────────
+
+L032 | DATE: 2026-05-13
+      TYPE: CODEBASE
+      LEARNING: Module-level mutable globals (error_files=[], errors_json={}) in
+                master_configuratory.py are initialized ONCE on module load and NEVER
+                reset between requests. Every upload appends to the same list, causing:
+                1. Duplicate worksheet names on the second upload (ExcelJS crash with
+                   "Worksheet name already exists").
+                2. Inflated error_files containing stale entries from prior requests.
+                Fix: call error_files.clear() and reset errors_json keys at the START
+                of every master_upload handler execution (before any sheet processing).
+                Use .clear() — mutates in place, no global declaration needed.
+      ROOT CAUSE: Python module-level globals are initialized once at import time.
+                  Each request reuses the same list object; .append() silently accumulates
+                  across requests with no error until a collision (duplicate sheet name)
+                  triggers on the second upload.
+      HOW TO APPLY: Any time a module-level list/dict is used as a per-request accumulator,
+                    add .clear() / key reset at the top of the handler that uses it.
+
+L033 | DATE: 2026-05-13
+      TYPE: CODEBASE
+      LEARNING: When a validation function in master_configuratory.py declares
+                `global error_files` and internally appends a sheet (e.g.
+                `plant_line_mapping_user`), NEVER also append the same sheet from the
+                calling handler. Doing so creates a duplicate sheet in the same request,
+                crashing ExcelJS.
+                Before adding any error_files.append({sheet_name: X}), grep the full
+                file for that sheet_name — if it already appears inside a validation
+                function, the handler must NOT add it again.
+      ROOT CAUSE: plm_validation() adds plant_line_mapping_user to global error_files
+                  directly. The upload handler had a redundant second append for the same
+                  sheet, producing two entries with identical sheet_name in one request.
+
+L034 | DATE: 2026-05-13
+      TYPE: GENERIC
+      LEARNING: f-strings inside a dict/list literal are evaluated IMMEDIATELY at the
+                line where the dict is constructed — NOT lazily when the dict is accessed.
+                If any f-string references a variable defined AFTER the dict literal,
+                a NameError results at runtime (not at parse time, so py_compile misses it).
+                Fix: replace f-string expressions with fixed safe values, or move the dict
+                definition AFTER the variables it references are assigned.
+      ROOT CAUSE: validations_map used f"...{_dd_plant_count+1}" but _dd_plant_count was
+                  assigned inside a try block that ran AFTER the dict was constructed.
+                  Python evaluates f-strings at the line they appear in source order.
+
+L035 | DATE: 2026-05-13
+      TYPE: GENERIC / OOXML
+      LEARNING: When extracting formula cells from OOXML using regex, NEVER use `.*?` with
+                re.DOTALL between the cell opening tag and `<f>`. The dot-star spans across
+                `</c>` boundaries and matches a self-closing empty cell's opening tag, then
+                consumes through to a DIFFERENT cell's `<f>` element — producing a false
+                formula-cell match with corrupted cell_attrs (includes trailing `/` from the
+                self-closing tag).
+                Fix: require `<f>` as the DIRECT first child:
+                  r'<c r="([A-Z]+)2"([^/>]*)><f>([^<]+)</f>'
+                Key patterns: `[^/>]*` (not `[^>]*`) excludes `/` from attrs capture;
+                no `.*?` between `>` and `<f>`.
+      ROOT CAUSE: `<c r="A2" s="2"/>` (empty cell) matched as formula cell because
+                  `([^>]*)` captured ` s="2"/` and `.*?` jumped to N2's `<f>` tag.
+                  Output: `<c r="A3" s="2"/>` (self-closing) + orphaned `<f>...</f></c>` = broken XML.
+
+L036 | DATE: 2026-05-13
+      TYPE: GENERIC / OOXML / ZIP
+      LEARNING: When write_cells_to_excel is called once per sheet and each call's OUTPUT
+                is passed as the next call's INPUT (chained), any patch applied to a SHARED
+                file inside the ZIP (e.g. xl/workbook.xml) accumulates with every call.
+                A non-idempotent regex like re.sub(r'<calcPr([^/]*)/>', r'<calcPr\1 attr="1"/>')
+                will match the already-patched tag and append the attribute AGAIN on each call.
+                12 sheets → 12 duplicate attributes → invalid XML → Excel "file corrupt" on open.
+                Fix (normalize-first pattern):
+                  xml = re.sub(r'\s*attr="[^"]*"', '', xml)   # strip existing
+                  xml = re.sub(r'<calcPr([^/]*)/>', r'<calcPr\1 attr="1"/>', xml)  # add once
+                This makes the patch idempotent regardless of call count.
+      ROOT CAUSE: fullCalcOnLoad="1" injected into calcPr 12 times (one per sheet call).
+
+L037 | DATE: 2026-05-13
+      TYPE: GENERIC / OOXML
+      LEARNING: Formula cells written with a cached <v>0</v> value but typed as t="str"
+                will display "0" instead of recalculating. Excel uses the cached value unless
+                forced to recalculate. Conditional formatting that checks cell value also
+                fails because it sees "0" not the formula result.
+                Fix: omit <v> entirely from formula cells — Excel recalculates when no
+                cached value is present. Pair with fullCalcOnLoad="1" in calcPr for
+                guaranteed recalculation on open.
+                Correct: <c r="N3" s="2" t="str"><f>IF(...)</f></c>
+                Wrong:   <c r="N3" s="2" t="str"><f>IF(...)</f><v>0</v></c>
+      ROOT CAUSE: Template Status column showed "0" for all rows except row 2. CF also
+                  failed because CF rule checked value="Error" but cells showed "0".
+
+───────────────────────────────────────────────────────
+
+L038 | DATE: 2026-05-21
+      TYPE: CODEBASE
+      LEARNING: In view_supply_plan.py, `all_iterations` and `compare_options` lists
+                contain DICT objects of the form {'value': 'iter_name', 'label': 'Skout iter_name'},
+                NOT plain strings. Any function that iterates or returns from these lists must
+                extract the 'value' key before using the result as a string (e.g. in SQL, as a
+                dict key, or in string comparisons).
+                Pattern: `it['value'] if isinstance(it, dict) else it`
+                Always apply this when: returning from all_iterations, comparing iteration names,
+                building SQL WHERE clauses from iteration values.
+      ROOT CAUSE: get_default_iteration_on_load() returned all_iterations[0] directly (a dict).
+                  SQL query received the dict literal as the iteration_id filter value, causing
+                  "Incorrect syntax near 'value'" and a downstream KeyError on 'week_end_date'.
+      HOW TO APPLY: Before any string operation on items from all_iterations or compare_options,
+                    normalize with: val = it['value'] if isinstance(it, dict) else it

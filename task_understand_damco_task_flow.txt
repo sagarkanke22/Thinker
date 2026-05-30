@@ -1,0 +1,396 @@
+═══════════════════════════════════════════════════════════════════════
+TASK FLOW — understand_damco_task → LogicLive build
+═══════════════════════════════════════════════════════════════════════
+Project    : LogicLive — Server-Driven UI platform for internal tools
+Track      : A (Engineer)
+Stack      : Python 3.11+ / FastAPI / SQLite / React 18 / Vite / Monaco /
+             react-plotly.js / Ollama (qwen2.5-coder:7b)
+Working    : /home/sagar123/Thinker/{logiclive,frontend,examples,tests}/
+Created    : 2026-05-30
+Estimate   : ~16 person-days
+
+═══════════════════════════════════════════════════════════════════════
+BLAST RADIUS (declared at INITIALIZATION STEP 4 — enforced during EXECUTION)
+═══════════════════════════════════════════════════════════════════════
+
+FILES CHANGING (all NEW, created inside /home/sagar123/Thinker/):
+  pyproject.toml
+  .gitignore
+  .env.example
+  README.md
+  logiclive/__init__.py
+  logiclive/app.py
+  logiclive/db.py
+  logiclive/sandbox.py
+  logiclive/ai.py
+  logiclive/widgets_registry.py
+  frontend/package.json
+  frontend/vite.config.js
+  frontend/jsconfig.json
+  frontend/index.html
+  frontend/src/main.jsx
+  frontend/src/App.jsx
+  frontend/src/AppRenderer.jsx
+  frontend/src/Editor.jsx
+  frontend/src/widgets/index.js
+  frontend/src/widgets/Text.jsx
+  frontend/src/widgets/Input.jsx
+  frontend/src/widgets/Button.jsx
+  frontend/src/widgets/Table.jsx
+  frontend/src/widgets/Chart.jsx
+  frontend/src/editor/WidgetTree.jsx
+  frontend/src/editor/CodeEditor.jsx
+  frontend/src/editor/ChatPanel.jsx
+  frontend/src/editor/LivePreview.jsx
+  frontend/src/api/client.js
+  frontend/src/styles/editor.css
+  examples/sales_report.yaml
+  examples/seed.py
+  tests/test_sandbox.py
+  tests/test_render.py
+  tests/test_db.py
+
+FILES READING (Thinker engine state files — read-only by execution steps):
+  /home/sagar123/Thinker/task_understand_damco_task_context.txt
+  /home/sagar123/Thinker/system_rules_and_learning.txt
+  /home/sagar123/Thinker/active_task_state.txt
+  /home/sagar123/Thinker/task_understand_damco_task_flow.txt (this file)
+
+FILES UNTOUCHED (explicit):
+  All files in /home/sagar123/Coke Prod/
+  All files in /home/sagar123/Thinker/ outside the four NEW directories above
+  All system files
+
+ROLLBACK ORDER (reverse-create — destructive but acceptable for greenfield):
+  rm -rf /home/sagar123/Thinker/tests/
+  rm -rf /home/sagar123/Thinker/examples/
+  rm -rf /home/sagar123/Thinker/frontend/
+  rm -rf /home/sagar123/Thinker/logiclive/
+  rm /home/sagar123/Thinker/.env.example
+  rm /home/sagar123/Thinker/.gitignore
+  rm /home/sagar123/Thinker/pyproject.toml
+  rm /home/sagar123/Thinker/README.md
+
+CONFLICT RISK: NO (greenfield directories; no overlap with prior task
+                   BLAST RADIUS — previous `actual_sales_col_order` was
+                   on /Coke Prod/view_supply_plan.py, no intersection)
+
+═══════════════════════════════════════════════════════════════════════
+EXECUTION STEPS
+═══════════════════════════════════════════════════════════════════════
+
+───────────────────────────────────────────────────────
+PHASE 2A — FOUNDATION  (target: Days 1-2)
+───────────────────────────────────────────────────────
+
+STEP 1 | Python project scaffolding
+  WHAT: Create pyproject.toml with deps (fastapi, uvicorn[standard],
+        sqlalchemy, pydantic, httpx, python-dotenv, pytest). Create
+        .gitignore (Python + Node + .env). Create .env.example with
+        OLLAMA_HOST=http://localhost:11434 and DB_PATH=./logiclive.db.
+        Create empty logiclive/__init__.py.
+  FILES: pyproject.toml, .gitignore, .env.example, logiclive/__init__.py
+  CITATIONS: [R001] one change per step, [R003] read before assume
+  VALIDATION:
+    - `uv pip install -e .` succeeds (or pip install -e .)
+    - `python -c "import logiclive"` returns no error
+  ROLLBACK: rm the 4 files
+
+STEP 2 | SQLite schema + connection helper
+  WHAT: Create logiclive/db.py with SQLAlchemy engine bound to DB_PATH.
+        Define `widgets` table: widget_id TEXT, screen_id TEXT,
+        base_config JSON, logic_code TEXT, updated_at TIMESTAMP.
+        PRIMARY KEY (screen_id, widget_id). Add init_db() that
+        creates the table if missing.
+  FILES: logiclive/db.py
+  CITATIONS: [C014] use canonical SDUI field names
+  VALIDATION:
+    - tests/test_db.py::test_init_creates_widgets_table passes
+    - schema matches C014 vocabulary
+  ROLLBACK: rm logiclive/db.py + delete logiclive.db if created
+
+STEP 3 | FastAPI app skeleton + /health
+  WHAT: Create logiclive/app.py with `app = FastAPI(...)`. Wire CORS for
+        localhost dev. Add `/health` returning {"status": "ok"}. Run
+        init_db() on startup.
+  FILES: logiclive/app.py
+  CITATIONS: [R007] stop on first failure
+  VALIDATION:
+    - `uvicorn logiclive.app:app --reload` boots
+    - `curl localhost:8000/health` → 200 + {"status":"ok"}
+  ROLLBACK: rm logiclive/app.py
+
+STEP 4 | React + Vite frontend scaffold
+  WHAT: `npm create vite@latest frontend -- --template react`. Inside
+        frontend/, npm install + add deps: react-plotly.js plotly.js-dist-min
+        @monaco-editor/react monaco-editor. Configure vite.config.js
+        proxy `/api → http://localhost:8000`. Empty App.jsx with text
+        "LogicLive bootstrapping".
+  FILES: frontend/package.json, vite.config.js, jsconfig.json, index.html,
+         src/main.jsx, src/App.jsx
+  CITATIONS: (frontend stack choices documented in context file)
+  VALIDATION:
+    - `npm run dev` starts on :5173
+    - browser shows "LogicLive bootstrapping"
+    - browser console has zero errors
+  ROLLBACK: rm -rf frontend/
+
+───────────────────────────────────────────────────────
+PHASE 2B — RUNTIME  (target: Days 3-4)
+───────────────────────────────────────────────────────
+
+STEP 5 | Subprocess sandbox executor
+  WHAT: Create logiclive/sandbox.py with `exec_logic(code: str,
+        params: dict, timeout=5, mem_mb=128) -> dict`. Use
+        subprocess.run with python -c wrapper that imports allowlisted
+        modules (json, datetime, math, sqlite3, statistics).
+        Wrapper serializes return dict to stdout JSON. Catch timeout,
+        non-zero exit, stderr → wrap in {"error": ...} dict.
+  FILES: logiclive/sandbox.py
+  CITATIONS: [C016] fresh sandbox per render, [C020] subprocess+timeout,
+             [L032] no shared module state (eliminated by subprocess)
+  VALIDATION:
+    - tests/test_sandbox.py passes: happy_path, timeout_kill,
+      blocked_import, exception_caught
+  ROLLBACK: rm logiclive/sandbox.py
+
+STEP 6 | /render endpoint + L026/C021 guards
+  WHAT: Add GET /render to app.py. Read screen_id, widget_id from query.
+        Per [C021/L026] explicitly check both are truthy non-empty
+        strings → raise HTTPException(400) if missing. Fetch logic_code
+        from DB. exec via sandbox. Return result dict. Wrap in standard
+        response envelope (type, props, data, style?, error?) per [C017].
+  FILES: logiclive/app.py (modify), logiclive/widgets_registry.py (new,
+         provides default base_config merge)
+  CITATIONS: [C017] /render contract, [C021]+[L026] explicit guards,
+             [C006/C019] expect explicit return from logic_code
+  VALIDATION:
+    - tests/test_render.py: missing_screen_id_returns_400,
+      missing_widget_id_returns_400, happy_path_returns_config,
+      logic_error_returns_error_field
+  ROLLBACK: revert app.py + rm widgets_registry.py
+
+STEP 7 | Seed sample widgets
+  WHAT: Create examples/seed.py that inserts widgets for screen_id
+        "sales_report":
+          - input.start_date     (base_config: {label, default})
+          - input.end_date       (base_config: {label, default})
+          - table.results        (base_config: {columns: [product, qty, rev]}
+                                  logic: returns sample rows)
+          - chart.revenue        (logic: returns Plotly figure dict)
+          - text.total_kpi       (logic: returns formatted total revenue)
+  FILES: examples/seed.py
+  CITATIONS: [C014] canonical vocabulary
+  VALIDATION:
+    - `python examples/seed.py` inserts 5 rows
+    - curl /render?screen_id=sales_report&widget_id=table.results returns
+      config-with-data without error
+  ROLLBACK: delete logiclive.db; rm examples/seed.py
+
+───────────────────────────────────────────────────────
+PHASE 2C — WIDGET LIBRARY  (target: Days 5-7)
+───────────────────────────────────────────────────────
+
+STEP 8 | Generic renderer + widget registry (frontend)
+  WHAT: Create AppRenderer.jsx that reads ?screen=X from URL, fetches the
+        screen's widget list from new GET /screen?screen_id=X (add to
+        app.py), then for each widget calls /render and dispatches to
+        the registered component by `type`. Create widgets/index.js as
+        the registry (map type→component).
+  FILES: frontend/src/AppRenderer.jsx, frontend/src/widgets/index.js,
+         frontend/src/api/client.js, logiclive/app.py (modify)
+  CITATIONS: [C014] vocabulary, [C017] response envelope
+  VALIDATION:
+    - Open /app?screen=sales_report → all 5 widgets rendered with
+      placeholder content (Step 9-13 fill actual widget UIs)
+  ROLLBACK: revert all 4 files
+
+STEP 9 | Text widget
+  WHAT: Text.jsx — renders `props.children` (string) with optional
+        style from `style` field.
+  FILES: frontend/src/widgets/Text.jsx + register in widgets/index.js
+  VALIDATION: text.total_kpi shows the formatted total revenue
+  ROLLBACK: revert Text.jsx + remove registry entry
+
+STEP 10 | Input widget
+  WHAT: Input.jsx — controlled `<input>`. On change (debounced 300ms),
+        POST /params { screen_id, widget_id, value } to backend, which
+        broadcasts an SSE event listing affected widget_ids. Dependent
+        widgets refetch /render on event.
+  FILES: frontend/src/widgets/Input.jsx, logiclive/app.py (add /params),
+         AppRenderer.jsx (subscribe SSE)
+  CITATIONS: [C016] each render is fresh
+  VALIDATION: typing in start_date causes table.results to refetch
+  ROLLBACK: revert 3 files
+
+STEP 11 | Button widget
+  WHAT: Button.jsx — on click, POST /action { screen_id, widget_id }.
+        Backend invokes logic_code with action params, returns affected
+        widgets list, frontend invalidates.
+  FILES: frontend/src/widgets/Button.jsx, logiclive/app.py (add /action)
+  VALIDATION: button click triggers logic + dependent refetch
+  ROLLBACK: revert 2 files
+
+STEP 12 | Table widget
+  WHAT: Table.jsx — render `props.columns` as headers, `data` as rows.
+        Optional per-cell `_style` from data row applies to <td>.
+  FILES: frontend/src/widgets/Table.jsx
+  VALIDATION: table.results shows seeded rows with optional cell coloring
+  ROLLBACK: revert Table.jsx
+
+STEP 13 | Chart widget (react-plotly.js)
+  WHAT: Chart.jsx — `<Plot data={props.data} layout={props.layout}
+        useResizeHandler style={{width:'100%'}}/>`. Renders any Plotly
+        figure dict returned by logic_code.
+  FILES: frontend/src/widgets/Chart.jsx
+  VALIDATION: chart.revenue shows the seeded sample chart
+  ROLLBACK: revert Chart.jsx
+
+───────────────────────────────────────────────────────
+PHASE 2D — EDITOR SCREEN  (target: Days 8-10)
+───────────────────────────────────────────────────────
+
+STEP 14 | Editor shell layout (3-pane)
+  WHAT: Editor.jsx — three columns via CSS grid: left=WidgetTree (20%),
+        center=CodeEditor+LivePreview stacked (55%), right=ChatPanel
+        (25%). Route at /editor?screen=X. Stub child components.
+  FILES: frontend/src/Editor.jsx, frontend/src/styles/editor.css
+  VALIDATION: /editor route shows 3 empty panes
+  ROLLBACK: revert files
+
+STEP 15 | WidgetTree
+  WHAT: WidgetTree.jsx — fetch GET /screen?screen_id=X. List widgets;
+        clicking a widget → setSelectedWidgetId in parent state.
+  FILES: frontend/src/editor/WidgetTree.jsx
+  VALIDATION: tree lists 5 seeded widgets; selection updates state
+  ROLLBACK: revert WidgetTree.jsx
+
+STEP 16 | CodeEditor (Monaco) + /save
+  WHAT: CodeEditor.jsx — `<MonacoEditor language="python">`. On
+        selectedWidgetId change, fetch GET /logic?screen_id&widget_id →
+        load code. Ctrl+S → POST /save with code → backend updates DB
+        + emits SSE 'widget-changed' event.
+  FILES: frontend/src/editor/CodeEditor.jsx,
+         logiclive/app.py (add /logic, /save)
+  CITATIONS: [C015] AI does NOT touch base_config (only logic_code here)
+  VALIDATION: edit + save → DB updated → confirm via curl /logic
+  ROLLBACK: revert files; restore DB row if necessary
+
+STEP 17 | LivePreview + SSE refresh
+  WHAT: LivePreview.jsx — `<iframe src="/app?screen=X"/>`. Subscribe to
+        SSE 'widget-changed'; on event, reload iframe (or postMessage
+        to trigger partial refetch).
+  FILES: frontend/src/editor/LivePreview.jsx,
+         logiclive/app.py (SSE endpoint /events)
+  VALIDATION: save in CodeEditor → iframe re-renders within 1s
+  ROLLBACK: revert files
+
+───────────────────────────────────────────────────────
+PHASE 2E — AI (LOCAL MODEL via OLLAMA)  (target: Days 11-13)
+───────────────────────────────────────────────────────
+
+STEP 18 | Ollama prerequisites — docs only
+  WHAT: Update README.md (and .env.example): document that user must
+        `ollama pull qwen2.5-coder:7b` and run `ollama serve` before
+        starting LogicLive. Default OLLAMA_HOST=http://localhost:11434.
+  FILES: README.md (create), .env.example (modify)
+  VALIDATION: README has clear prerequisite section
+  ROLLBACK: revert files
+
+STEP 19 | logiclive/ai.py — Ollama client + prompt builder
+  WHAT: ai.py exposes async `generate_logic(prompt, screen_id, widget_id)
+        -> str`. Per [C018] context assembly:
+          1. introspect DB schema (table list + columns)
+          2. fetch 1-3 sample rows per relevant table
+          3. fetch the widget's base_config
+          4. fetch prior logic_code (if any)
+          5. include /render response schema verbatim
+        Build system prompt + user prompt. POST to Ollama
+        /api/generate with stream=True. Return concatenated string.
+  FILES: logiclive/ai.py
+  CITATIONS: [C018] required prompt context, [C005 from R rules unused]
+  VALIDATION: pytest test asserts prompt body contains all 5 ingredients
+  ROLLBACK: rm logiclive/ai.py
+
+STEP 20 | /ai/generate endpoint + [C019] explicit-return validation
+  WHAT: Add POST /ai/generate to app.py. Accepts user prompt + widget
+        scope. Calls ai.generate_logic(). Per [C019] checks output
+        contains `return` keyword; if not, append a fixup directive +
+        retry once. Stream tokens via SSE to client.
+  FILES: logiclive/app.py
+  CITATIONS: [C019] explicit-return mandate
+  VALIDATION: curl POST /ai/generate returns streamed Python ending in
+              a return statement
+  ROLLBACK: revert app.py
+
+STEP 21 | ChatPanel — scoped to current widget, diff view, apply
+  WHAT: ChatPanel.jsx — input box + transcript. On submit, calls
+        /ai/generate. Stream tokens into a code-diff viewer (current
+        vs proposed). Apply button → POST /save (re-uses step 16).
+  FILES: frontend/src/editor/ChatPanel.jsx
+  VALIDATION: open editor → ask AI to add a date filter → see streamed
+              diff → click Apply → preview updates within 2s
+  ROLLBACK: revert ChatPanel.jsx
+
+───────────────────────────────────────────────────────
+PHASE 2F — DEMO + POLISH  (target: Days 14-16)
+───────────────────────────────────────────────────────
+
+STEP 22 | Polished example app
+  WHAT: examples/sales_report.yaml — declarative source for the demo
+        screen. Update seed.py to read from YAML. Ensure all 4 widget
+        types are exercised: input × 2, table, chart, text-KPI. Logic
+        functions deliberately small but interesting (groupby,
+        aggregate, format).
+  FILES: examples/sales_report.yaml, examples/seed.py (modify)
+  VALIDATION: full demo runs end-to-end: open /app → see real-looking
+              sales report → open /editor → modify a handler → preview
+              updates
+  ROLLBACK: revert files
+
+STEP 23 | README + architecture diagram + demo video + GitHub
+  WHAT:
+    1. README.md final: pitch (1 para), problem (1 para), architecture
+       diagram (ASCII or PNG), quickstart (5 commands max), tradeoffs
+       section (the honest 5 from context).
+    2. Run demo flow 2-3 times until rough edges smoothed.
+    3. Record 5-7 min video covering: Problem Framing (2 min), System
+       Design (2 min), Tradeoffs (1.5 min), Failure Modes (1 min).
+    4. Push to public GitHub. Upload video unlisted to YouTube.
+    5. Draft submission email per the brief.
+  FILES: README.md (final pass), no other code files
+  CITATIONS: [R010] mark COMPLETE only after user confirms tested
+  VALIDATION:
+    - cold-clone test: `git clone && setup && demo runs` in <5 min
+    - video uploaded, links saved
+    - submission email drafted (not sent until user reviews)
+  ROLLBACK: revert README.md (video/repo are external — no auto-rollback)
+
+═══════════════════════════════════════════════════════════════════════
+CROSS-CUTTING VALIDATION GATES
+═══════════════════════════════════════════════════════════════════════
+- After every step: `pytest tests/ -v` must pass (zero red).
+- After Phase 2A: backend boots; frontend dev server boots.
+- After Phase 2B: curl /render returns config-with-data without error.
+- After Phase 2C: /app?screen=sales_report renders all 5 widgets with
+                  seeded data.
+- After Phase 2D: /editor allows edit + save + live-preview reload.
+- After Phase 2E: AI-generated logic executes in sandbox without manual
+                  edits.
+- Before Phase 2F: dry-run the demo end-to-end; record rough edges.
+
+═══════════════════════════════════════════════════════════════════════
+STANDING RULES (apply to every step)
+═══════════════════════════════════════════════════════════════════════
+[R002] grep this file's matched-rules + system_rules before writing code
+[R003] read target file before editing — no structure assumptions
+[R004] match indentation exactly
+[R005] add context to disambiguate string replacements
+[R006] state assumptions explicitly before editing
+[R007] stop on first failure → route to BLOCKED
+[R008] minimal fix only — flag if >10 lines
+[R009] cite source on every applied rule: [From C***] / [From L***]
+[R010] never mark COMPLETE without user testing confirmation
+[L022] inline bug fixes during execution must append DEBUG ENTRY to context
+
+═══════════════════════════════════════════════════════════════════════

@@ -1,0 +1,103 @@
+═══════════════════════════════════════════════════════
+MODULE: initialize_task.txt
+TRIGGER: "follow initialize_task.txt" / "initialize task"
+═══════════════════════════════════════════════════════
+
+## STEP 1 — Collect required inputs
+
+Ask the user for the following if not already provided:
+
+  - TASK NAME       : short identifier (e.g. dc_util_compare)
+  - TASK DESCRIPTION: what needs to be built or fixed
+  - FILES INVOLVED  : which files will be touched
+  - ACCEPTANCE CRITERIA: how to know when the task is done
+
+Do NOT proceed until all 4 fields are confirmed.
+
+───────────────────────────────────────────────────────
+
+## STEP 2 — Create task_<taskname>_context.txt
+
+Structure:
+```
+TASK NAME: <name>
+DESCRIPTION: <description>
+FILES INVOLVED: <list>
+ACCEPTANCE CRITERIA: <criteria>
+DATE CREATED: <date>
+
+## SECTION A — Task Definition
+(filled from inputs above)
+
+## SECTION B — Code Understanding
+(filled during ANALYSIS phase)
+
+## SECTION C — Implementation Plan
+(filled during ANALYSIS phase)
+
+## SECTION D — Error Cases
+(filled during EXECUTION phase)
+
+## SECTION E — Task-Specific Lessons
+(filled during LEARNING phase)
+```
+
+───────────────────────────────────────────────────────
+
+## STEP 3 — Create task_<taskname>_flow.txt
+
+Structure:
+```
+TASK NAME: <name>
+PHASE: INITIALIZATION → ANALYSIS → EXECUTION → LEARNING → COMPLETE
+
+## STEPS
+
+STEP 1 | Read all involved files
+STATUS: PENDING
+VALIDATION: Confirm key functions/components identified
+
+STEP 2 | Analyze and document code understanding (Section B)
+STATUS: PENDING
+VALIDATION: User confirms understanding is correct
+
+STEP 3 | Write implementation plan (Section C)
+STATUS: PENDING
+VALIDATION: User approves plan before execution
+
+STEP 4 | Execute changes — one file at a time
+STATUS: PENDING
+VALIDATION: Each change verified before next
+
+STEP 5 | Test and confirm acceptance criteria met
+STATUS: PENDING
+VALIDATION: User confirms working
+
+STEP 6 | Derive and store learnings
+STATUS: PENDING
+VALIDATION: Learnings classified and saved
+```
+
+───────────────────────────────────────────────────────
+
+## STEP 4 — Update active_task_state.txt
+
+```
+CURRENT TASK NAME   : <taskname>
+CONTEXT FILE        : task_<taskname>_context.txt
+FLOW FILE           : task_<taskname>_flow.txt
+CURRENT PHASE       : ANALYSIS
+CURRENT STEP        : STEP 1 — Read involved files
+STATUS              : IN PROGRESS
+LAST UPDATED        : <date>
+```
+
+───────────────────────────────────────────────────────
+
+## STEP 5 — Confirm to user
+
+Report:
+  - Task initialized
+  - Files created
+  - Current state
+  - What happens next (STEP 1 of flow)

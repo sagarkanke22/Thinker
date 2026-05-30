@@ -1,0 +1,223 @@
+Damco Solutions Inc. Logo
+AI @Damco
+Services
+Industries
+Client Success
+Partners
+Contact
+Home > Build At Damco
+
+We're looking for Builders. Doers. Owners.
+No resumes. No titles. Just show us what you can build_
+
+Accept the Challenge
+
+We hire based on how you think.
+Forget the traditional interview process. We want to see your mind at work, solving real problems, making real decisions.
+
+rules.js
+const rules =
+{
+"No Resumes",
+"No Trick Questions",
+"Real Problems Only"
+};
+$ |
+Your Task
+Pick a real problem you’ve personally experienced, build or design a solution, and walk us through how you thought about it.
+
+What we mean by a real problem:
+Something you’ve personally experienced — friction, inefficiency, or something that made you think, “this shouldn’t be this hard.
+
+How this works?
+Choose Your Track
+Pick the track that matches the role you’re applying for.
+
+
+
+Engineers
+
+
+Tech Leads
+01
+Pick a Complex Problem
+
+Something that needs a system, not just a script.
+
+02
+Build the Solution
+
+Code it. Ship it. Push to a public repo.
+
+03
+Record a Video
+
+Walk us through your thinking. 5-10 minutes max.
+
+Your video should cover
+
+Problem Framing (2–3 min): What problem did you choose? Why is it hard?
+System Design (5–6 min): Walk through your architecture, components, and data flows.
+Tradeoffs (3–4 min): Key decisions, alternatives considered, and what would change your mind.
+Failure Modes (2 min): What breaks and how the system behaves when things go wrong.
+Clear thinking matters more than perfect diagrams.
+Use AI. Seriously. If it helps you move faster, use it. We care about what you ship, not how you got there.
+
+What Happens After You Submit
+Your journey from submission to screening
+
+Step 1/3
+
+Code Review
+
+Usually within 5 business days
+
+Step 2/3
+
+Live Discussion
+
+20 min discussion
+
+Step 3/3
+
+Cultural Screening
+
+Formal next steps
+
+Engineer_Sample Discussion
+# Track A: (Engineer Interview)
+{
+> Q: Can you add a small feature while sharing your screen?
+> Q: Why did you use X here instead of Y?
+}
+$ |
+Tech Lead_Sample Discussion
+# Track B: (Tech Lead Interview)
+{
+> Scenario: Client just added a requirement. How do you adapt?
+> Scenario: Budget cut in half. What gets cut?
+}
+$ |
+What Counts as a Problem?
+Some examples here, but bring your own. We want to see you think.
+
+“I waste 20 minutes every morning sorting through WhatsApp groups for important messages”
+
+→ Build a voice agent that summarizes your unread messages
+
+“My parents can never find the right government form online”
+
+→ Build a voice assistant that navigates government services in Hindi
+
+
+Any problem that is real. Something you’ve personally experienced.
+
+“I forget what I read in books after a few weeks”
+
+→ Build an agent that quizzes you on your Kindle highlights
+
+“I never know what to cook with what’s in my fridge”
+
+→ Build an agent that suggests recipes from a photo of your ingredients
+
+“Tracking expenses across UPI apps is a nightmare”
+
+→ Build a voice agent that categorizes spending from screenshots
+
+What We’re Looking For
+engineer.test.ts
+PASS src/tests/engineer.test.ts
+
+[PASS] Problem Identification
+Did you pick a real problem?
+[PASS] Technical understanding
+Did you pick a real problem?
+[PASS] Scoping
+Did you pick a real problem?
+[PASS] Self-Awareness
+Did you pick a real problem?
+engineer.test.ts
+PASS src/tests/engineer.test.ts
+
+[PASS] Problem Identification
+Did you pick a real problem?
+[PASS] Technical understanding
+Did you pick a real problem?
+[PASS] Scoping
+Did you pick a real problem?
+[PASS] Self-Awareness
+Did you pick a real problem?
+How to Submit
+Ready to push? Here's your submission command.
+
+submit.sh
+$ mail -s "Builder Challenge - [Your Name] - [Track A or B]" \ hiring@damcogroup.com
+# Required flags (attachments)
+(link) / YouTube (Unlisted)
+(source) / GitHub OR Architecture Doc
+(bio) / 2–3 lines about what you build
+$ |
+Open Email
+Questions? We respond within 24h.
+
+Connect With Us
+
+ 
+
+ +1 609 632 0350
+
+ info@damcogroup.com
+
+Get Our Newsletter
+
+
+Services
+
+AI Services
+Blockchain
+Cloud
+Data Services
+DevOps
+Enterprise Application
+Enterprise Data
+Generative AI
+Hire Developers
+Insurance Tech
+Intelligent Automation
+IT Staffing
+Low Code Development
+Mobile App Development
+Software Engineering
+QA & Testing
+Virtual CTO
+Technologies
+Partners
+
+AWS
+Google
+Microsoft
+Nividous
+OutSystems
+Salesforce
+UiPath
+Company
+
+About Us
+Blogs
+Career
+Contact
+Corporate Responsibility
+Leadership
+Our Culture
+Our Approach
+Insights
+1
+2
+3
+4
+5
+6
+7
+8
+9
+USA UK France India UAE
