@@ -48,9 +48,83 @@ const ID_TEXT = {
 const STATUS_TEXT = { color: '#888', fontStyle: 'italic', fontSize: 13 }
 const ERR_TEXT = { color: 'crimson', fontSize: 12, padding: 4 }
 
+const ADD_BTN = {
+  display: 'block',
+  width: '100%',
+  padding: '6px 10px',
+  margin: '0 0 8px',
+  border: '1px dashed #2da44e',
+  borderRadius: 4,
+  background: '#f6fcf8',
+  color: '#2da44e',
+  fontSize: 12,
+  cursor: 'pointer',
+  fontFamily: 'system-ui, sans-serif',
+}
+const DIALOG = {
+  padding: 8,
+  margin: '0 0 10px',
+  border: '1px solid #d0d7de',
+  borderRadius: 4,
+  background: '#fafbfc',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+}
+const DIALOG_INPUT = {
+  padding: '4px 8px',
+  border: '1px solid #d0d7de',
+  borderRadius: 3,
+  fontSize: 12,
+  fontFamily: 'ui-monospace, monospace',
+}
+const DIALOG_BTN_ROW = { display: 'flex', gap: 6, justifyContent: 'flex-end' }
+const DIALOG_BTN_PRIMARY = {
+  padding: '4px 12px',
+  border: '1px solid #2da44e',
+  borderRadius: 3,
+  background: '#2da44e',
+  color: '#fff',
+  fontSize: 12,
+  cursor: 'pointer',
+}
+const DIALOG_BTN_CANCEL = {
+  padding: '4px 12px',
+  border: '1px solid #d0d7de',
+  borderRadius: 3,
+  background: '#fff',
+  color: '#333',
+  fontSize: 12,
+  cursor: 'pointer',
+}
+const TYPES = ['text', 'input', 'button', 'table', 'chart']
+
+const DELETE_X_BTN = {
+  border: 'none',
+  background: 'transparent',
+  color: '#888',
+  cursor: 'pointer',
+  fontSize: 14,
+  padding: '0 4px',
+  lineHeight: 1,
+  visibility: 'hidden',
+}
+
 export function WidgetTree({ screenId, selectedWidgetId, onSelect }) {
   const [widgets, setWidgets] = useState(null)
   const [error, setError] = useState(null)
+
+  // Add-widget dialog state
+  const [showAdd, setShowAdd] = useState(false)
+  const [newType, setNewType] = useState('text')
+  const [newId, setNewId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [addError, setAddError] = useState(null)
+
+  const refresh = () =>
+    fetchScreen(screenId)
+      .then((d) => setWidgets(d.widgets))
+      .catch((e) => setError(String(e.message || e)))
 
   useEffect(() => {
     if (!screenId) return
@@ -67,9 +141,104 @@ export function WidgetTree({ screenId, selectedWidgetId, onSelect }) {
     }
   }, [screenId])
 
+  const deleteWidget = async (widgetId, e) => {
+    e.stopPropagation()
+    if (!confirm(`Delete widget '${widgetId}'? This cannot be undone.`)) return
+    try {
+      const r = await fetch(
+        `/api/widget/${encodeURIComponent(screenId)}/${encodeURIComponent(widgetId)}`,
+        { method: 'DELETE' },
+      )
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        throw new Error(body.detail || `HTTP ${r.status}`)
+      }
+      // Clear selection if the deleted widget was selected
+      if (selectedWidgetId === widgetId && onSelect) onSelect(null)
+      await refresh()
+    } catch (e) {
+      setError(`delete: ${String(e.message || e)}`)
+    }
+  }
+
+  const createWidget = async () => {
+    const wid = newId.trim()
+    if (!wid) {
+      setAddError('widget_id required')
+      return
+    }
+    setBusy(true)
+    setAddError(null)
+    try {
+      const r = await fetch('/api/widget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ screen_id: screenId, widget_id: wid, type: newType }),
+      })
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        throw new Error(body.detail || `HTTP ${r.status}`)
+      }
+      await refresh()
+      setShowAdd(false)
+      setNewId('')
+      setNewType('text')
+      if (onSelect) onSelect(wid)
+    } catch (e) {
+      setAddError(String(e.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="editor-pad">
       <div className="editor-section-label">Widgets</div>
+
+      {!showAdd && (
+        <button style={ADD_BTN} onClick={() => setShowAdd(true)}>
+          + Add Widget
+        </button>
+      )}
+      {showAdd && (
+        <div style={DIALOG}>
+          <select
+            style={DIALOG_INPUT}
+            value={newType}
+            onChange={(e) => setNewType(e.target.value)}
+            disabled={busy}
+          >
+            {TYPES.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+          <input
+            style={DIALOG_INPUT}
+            value={newId}
+            onChange={(e) => setNewId(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') createWidget()
+              else if (e.key === 'Escape') setShowAdd(false)
+            }}
+            placeholder={`${newType}.new_widget`}
+            disabled={busy}
+            autoFocus
+          />
+          {addError && <div style={ERR_TEXT}>{addError}</div>}
+          <div style={DIALOG_BTN_ROW}>
+            <button
+              style={DIALOG_BTN_CANCEL}
+              onClick={() => { setShowAdd(false); setAddError(null) }}
+              disabled={busy}
+            >
+              Cancel
+            </button>
+            <button style={DIALOG_BTN_PRIMARY} onClick={createWidget} disabled={busy}>
+              {busy ? '…' : 'Create'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {error && <div style={ERR_TEXT}>{error}</div>}
       {!widgets && !error && <div style={STATUS_TEXT}>loading…</div>}
@@ -86,6 +255,14 @@ export function WidgetTree({ screenId, selectedWidgetId, onSelect }) {
               key={w.widget_id}
               style={style}
               onClick={() => onSelect && onSelect(w.widget_id)}
+              onMouseEnter={(e) => {
+                const x = e.currentTarget.querySelector('button')
+                if (x) x.style.visibility = 'visible'
+              }}
+              onMouseLeave={(e) => {
+                const x = e.currentTarget.querySelector('button')
+                if (x) x.style.visibility = 'hidden'
+              }}
               title={`${w.type} · ${w.widget_id}`}
             >
               <span
@@ -94,6 +271,13 @@ export function WidgetTree({ screenId, selectedWidgetId, onSelect }) {
                 {w.type}
               </span>
               <span style={ID_TEXT}>{w.widget_id}</span>
+              <button
+                style={DELETE_X_BTN}
+                onClick={(e) => deleteWidget(w.widget_id, e)}
+                title={`Delete ${w.widget_id}`}
+              >
+                ×
+              </button>
             </div>
           )
         })}

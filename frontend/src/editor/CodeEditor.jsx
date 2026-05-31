@@ -56,6 +56,8 @@ export function CodeEditor({ screenId, widgetId }) {
   const [origCode, setOrigCode] = useState('')
   const [phase, setPhase] = useState('idle') // idle | loading | saving | saved | error
   const [errMsg, setErrMsg] = useState(null)
+  const [testOut, setTestOut] = useState(null)   // {ok, result, stdout, stderr} or null
+  const [testing, setTesting] = useState(false)
   const saveRef = useRef(null)
 
   // Load logic when the selected widget changes
@@ -87,6 +89,32 @@ export function CodeEditor({ screenId, widgetId }) {
       cancelled = true
     }
   }, [screenId, widgetId])
+
+  // Clear test output when widget selection changes
+  useEffect(() => {
+    setTestOut(null)
+  }, [widgetId])
+
+  // Test handler — runs current code in sandbox WITHOUT saving
+  const runTest = async () => {
+    if (!code.trim()) return
+    setTesting(true)
+    setTestOut(null)
+    try {
+      const r = await fetch('/api/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logic_code: code, params: {} }),
+      })
+      const body = await r.json()
+      setTestOut(body)
+    } catch (e) {
+      setTestOut({ ok: false, result: { error: { type: 'fetch',
+                   message: String(e.message || e) } }, stdout: '', stderr: '' })
+    } finally {
+      setTesting(false)
+    }
+  }
 
   // Save handler — also bound to Ctrl+S inside Monaco
   const save = async () => {
@@ -144,13 +172,23 @@ export function CodeEditor({ screenId, widgetId }) {
           <span style={TITLE}>{widgetId}</span>
           {statusEl}
         </div>
-        <button
-          style={dirty && phase !== 'saving' ? SAVE_BTN : SAVE_BTN_DISABLED}
-          onClick={save}
-          disabled={!dirty || phase === 'saving'}
-        >
-          Save
-        </button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            style={!testing && code.trim() ? TEST_BTN : TEST_BTN_DISABLED}
+            onClick={runTest}
+            disabled={testing || !code.trim()}
+            title="Run this code in the sandbox without saving"
+          >
+            {testing ? '…' : 'Test'}
+          </button>
+          <button
+            style={dirty && phase !== 'saving' ? SAVE_BTN : SAVE_BTN_DISABLED}
+            onClick={save}
+            disabled={!dirty || phase === 'saving'}
+          >
+            Save
+          </button>
+        </div>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
         <Editor
@@ -170,6 +208,117 @@ export function CodeEditor({ screenId, widgetId }) {
           }}
         />
       </div>
+      {testOut && (
+        <div style={TEST_PANEL}>
+          <div style={TEST_PANEL_HEADER}>
+            <span>
+              Test{' '}
+              {testOut.ok
+                ? <span style={{ color: '#2da44e' }}>✓ ok</span>
+                : <span style={{ color: 'crimson' }}>✗ {testOut.result?.error?.type || 'failed'}</span>
+              }
+              {typeof testOut.duration_ms === 'number' && (
+                <span style={{ color: '#888', marginLeft: 8 }}>· {testOut.duration_ms}ms</span>
+              )}
+            </span>
+            <button style={CLOSE_BTN} onClick={() => setTestOut(null)}>×</button>
+          </div>
+          <div style={TEST_PANEL_BODY}>
+            <div style={TEST_SECTION_LABEL}>result</div>
+            <pre style={TEST_PRE}>{JSON.stringify(testOut.result, null, 2)}</pre>
+
+            {/* Always show stdout section so user can tell whether code printed */}
+            <div style={TEST_SECTION_LABEL}>
+              stdout (server-side print output from sandbox)
+            </div>
+            <pre style={{
+              ...TEST_PRE,
+              background: '#f0f0f4',
+              color: testOut.stdout ? '#222' : '#888',
+              fontStyle: testOut.stdout ? 'normal' : 'italic',
+            }}>
+              {testOut.stdout || '(no print output — add print(...) to your widget logic to see traces here)'}
+            </pre>
+
+            {testOut.stderr && (
+              <>
+                <div style={TEST_SECTION_LABEL}>stderr</div>
+                <pre style={{ ...TEST_PRE, background: '#fff0f0', color: 'crimson' }}>{testOut.stderr}</pre>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
+}
+
+const TEST_BTN = {
+  padding: '3px 10px',
+  border: '1px solid #2da44e',
+  borderRadius: 3,
+  background: '#2da44e',
+  color: '#fff',
+  cursor: 'pointer',
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: 12,
+}
+const TEST_BTN_DISABLED = {
+  ...TEST_BTN,
+  background: '#a8d4b8',
+  border: '1px solid #a8d4b8',
+  cursor: 'default',
+}
+const TEST_PANEL = {
+  borderTop: '1px solid #e1e4e8',
+  maxHeight: 220,
+  display: 'flex',
+  flexDirection: 'column',
+  flexShrink: 0,
+  background: '#fafbfc',
+}
+const TEST_PANEL_HEADER = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: '4px 10px',
+  fontSize: 11,
+  fontWeight: 600,
+  color: '#444',
+  background: '#f0f3f7',
+  borderBottom: '1px solid #e1e4e8',
+}
+const TEST_PANEL_BODY = {
+  overflow: 'auto',
+  padding: '6px 10px',
+  fontFamily: 'ui-monospace, monospace',
+  fontSize: 11,
+}
+const TEST_SECTION_LABEL = {
+  fontSize: 10,
+  fontWeight: 600,
+  letterSpacing: 0.5,
+  color: '#666',
+  textTransform: 'uppercase',
+  margin: '6px 0 2px',
+}
+const TEST_PRE = {
+  margin: 0,
+  padding: '4px 8px',
+  background: '#fff',
+  border: '1px solid #e1e4e8',
+  borderRadius: 3,
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
+  maxHeight: 100,
+  overflow: 'auto',
+}
+const CLOSE_BTN = {
+  background: 'transparent',
+  border: 'none',
+  fontSize: 16,
+  cursor: 'pointer',
+  color: '#888',
+  padding: 0,
+  lineHeight: 1,
 }

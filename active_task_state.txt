@@ -6,22 +6,182 @@ CURRENT TASK NAME   : understand_damco_task
 CONTEXT FILE        : task_understand_damco_task_context.txt
 FLOW FILE           : task_understand_damco_task_flow.txt
 CURRENT PHASE       : EXECUTION
-CURRENT STEP        : 23
-LAST COMPLETED STEP : 22
+CURRENT STEP        : 46
+LAST COMPLETED STEP : 45
+NOTE                : Step 35 shipped (BUILD with code draft).
+                      Step 36 IN PROGRESS — editor chat multi-turn
+                      history + better prefill from /plan handoff.
+                      ai.py: build_prompt accepts optional history list,
+                      includes as CONVERSATION SO FAR block when present,
+                      with per-message 1500-char truncation. app.py:
+                      AIGenerateRequest.history field, passed through.
+                      PlanPage.jsx: when rendering BuildButton, walks
+                      back through messages to find the user's original
+                      question, passes as userQuestion prop; BuildButton
+                      now prefills editor with the USER QUESTION (not
+                      protocol text or short note). ChatPanel.jsx: major
+                      refactor — replaced single-shot proposed/transcript
+                      with multi-turn history array; localStorage keyed
+                      per (screen_id, widget_id), loaded on widget switch,
+                      saved on every change; backend gets last 10 turns
+                      as history for context-aware regeneration; each
+                      assistant turn has its own Apply button with applied
+                      indicator; "clear" button in header. PENDING USER
+                      UI TEST (R010).
 STATUS              : IN PROGRESS
-NOTE                : Step 23 docs done (README polish + rehearsal + email); external pieces (test, GitHub push, video, send email) pending user. DO NOT mark COMPLETE until user testing confirmation per R010.
 DEFERRED LEARNING   : NO
-BLAST RADIUS        : 26 files (NEW) under /home/sagar123/Thinker/{logiclive,frontend,examples,tests}/ — see task_understand_damco_task_flow.txt for full list
-LAST ERROR CLASS    : NONE
-LAST DEBUG ENTRY    : NONE
+BLAST RADIUS        : Step 29 changes: logiclive/ai.py (+MODE_INSTRUCTIONS dict, build_prompt now takes mode), logiclive/app.py (AIGenerateRequest.mode field, mode validation, mode passed to build_prompt, [C019] retry gated to generate-only, done event includes mode), frontend/src/editor/ChatPanel.jsx (mode dropdown, mode/lastMode state, mode passed in fetch body, Apply button gated to lastMode==generate, per-mode empty hint).
+LAST ERROR CLASS    : MISSING SANDBOX KNOWLEDGE IN PROMPT
+LAST DEBUG ENTRY    : Step 46 — Plan Pipeline becomes task-oriented.
+                      User feedback: pipeline was agent-segmented
+                      (Data/@backend vs UI/@frontend) but DDL/schema
+                      changes from SOLUTION PLAN sections were buried
+                      in chat, not surfaced as actionable prerequisites.
+                      PlanPage.jsx: new parseSolutionPlan() regex
+                      extracts SOLUTION PLAN body from any agent message;
+                      extractStepsData() now aggregates ALL prerequisites
+                      across messages (not just latest); StepsPanel
+                      renders a yellow Prerequisites card (between
+                      Question and Data approach) when any plans exist.
+                      Card titles renamed: "Data (@backend)" → "Data
+                      approach · from @backend" (agent demoted from
+                      title to subtle source tag). Step numbers now
+                      dynamic so Prerequisites slots in naturally.
+                      Pipeline reads as TASK plan, not org chart.
+                      Step 45 — agents emit SOLUTION PLAN when blocked.
+                      agents.py _AGENT_DISCIPLINE: new rule 8 NO DEAD
+                      ENDS — agent must enumerate concrete steps to
+                      unblock when user wants something missing (schema
+                      gap → DDL, frontend gap → scaffold steps, sandbox
+                      gap → workaround, arch gap → design note). New
+                      OPTIONAL SOLUTION PLAN section in required response
+                      shape (between EVIDENCE and NEXT STEPS), included
+                      only when blocked. Examples for each blocker type
+                      embedded in the prompt: runnable SQL, scaffolding
+                      instructions, workarounds, design notes. NEXT STEPS
+                      points to step 1 of the plan when present.
+                      Universal — works for ALL blocker types because
+                      plans are just structured text the user reads.
+                      Step 44 — top nav. App.jsx: new TopNav component
+                      with brand (⚡ LogicLive) + Plan link + Editor
+                      link (active state via blue bg). Right side has
+                      screen badge when on /editor + "Preview app ↗"
+                      external link. App.jsx wraps /plan and /editor in
+                      flex-column SHELL with TopNav above + PAGE_FRAME
+                      (flex:1 minHeight:0) below. AppRenderer stays
+                      unwrapped (end-user view, no dev nav). Editor.jsx:
+                      added inline style={{ height: '100%' }} on
+                      editor-shell to override editor.css's 100vh so it
+                      fits inside the wrapper. PlanPage.jsx: PAGE height
+                      100vh → 100% for the same reason. Step 43 follow-
+                      up FIX — Plan Pipeline panel
+                      cramped. PlanPage.jsx polish: panel widened
+                      320→360px; padding 12→16px; field layout changed
+                      from side-by-side grid (cramped) to stacked
+                      label-above-value (much friendlier in narrow
+                      column); typography upsized; cards got subtle
+                      box-shadow for depth; arrow margin 2→8px;
+                      Build card got linear-gradient + green shadow +
+                      "Ready to ship 🚀" header for stronger CTA.
+                      Step 43 — Plan Pipeline side panel. PlanPage.jsx:
+                      new 320px right column with 5 connected step cards:
+                      1·Question / 2·Data / 3·UI / 4·Code / 5·Build.
+                      Each card shows latest data extracted from messages
+                      via extractStepsData() (walks messages back-to-front
+                      to find latest user msg + latest backend synthesis
+                      with SOURCE TABLE / latest frontend synthesis with
+                      WIDGET TYPE / latest code block / latest BUILD hook).
+                      parseSpecFields() pulls labeled fields from synthesis
+                      output with regex (handles multi-line values,
+                      collapses to single-line for card display, skips
+                      n/a). Cards that have no data render as dashed
+                      empty placeholders so user sees what's missing at
+                      a glance. Build card embeds the BuildButton (green
+                      "with code" if drafted). Step 42 — widget delete. app.py: new endpoint
+                      DELETE /widget/{screen_id}/{widget_id} — 404 if
+                      missing, fires widget-changed SSE on success.
+                      WidgetTree.jsx: new DELETE_X_BTN style (hidden,
+                      shown on row hover); deleteWidget() handler does
+                      confirm() + fetch DELETE + clears selectedWidgetId
+                      if the deleted row was selected + refresh().
+                      onMouseEnter/Leave on the row toggles button
+                      visibility via .querySelector('button'). Uses
+                      encodeURIComponent on path segments for safety.
+                      Step 41 follow-up FIX — table widget contract
+                      mismatch caused blank screen. agents.py
+                      FRONTEND_CAPABILITIES advertised columns as
+                      [{field, header}] objects but Table.jsx renderer
+                      only accepted plain strings. AI's correctly-
+                      spec'd code returned objects → React received
+                      object as `key={c}` → unhandled error → blank
+                      iframe. Fixed Table.jsx to normalize both forms
+                      (strings or {field, header}), use col.field for
+                      data lookup, col.header for display label, and
+                      filter out malformed entries. Step 41 — iterate-
+                      before-build UX. PlanPage.jsx:
+                      Build button now only renders on the LATEST
+                      assistant message that has a BUILD: hook (not on
+                      every historical synthesis attempt). Computed via
+                      a backward scan + IIFE wrapper around the messages
+                      map. Added a green/info hint after the last
+                      message when a Build hook exists: "Review the plan
+                      above. Type a follow-up to refine then re-Finalize,
+                      or click Build when happy." Makes the iterate-then-
+                      build loop obvious. Step 40 — "Finalize Plan"
+                      joint synthesis.
+                      PlanPage.jsx: new FINALIZE_BACKEND_PROMPT +
+                      FINALIZE_FRONTEND_PROMPT (data spec / UI spec
+                      formats); new finalize() handler asks @backend
+                      then @frontend in sequence; backend produces
+                      DATA SPEC (SOURCE TABLE / COLUMNS / FILTERS /
+                      GROUPING / SQL APPROACH / NOTES), frontend
+                      produces UI SPEC (WIDGET TYPE / LAYOUT / KEY
+                      PROPS / NOTES) + BUILD: hook + code draft
+                      using both specs. Frontend sees backend's spec
+                      in history via existing /ai/discuss history
+                      mechanism. New purple FINALIZE_BTN renders
+                      next to Send (only when messages.length > 0).
+                      Help text updated. Step 39 follow-up FIX
+                      (richer Build prefill + ChatPanel useEffect
+                      reorder) also shipped in same session.
 
-LAST UPDATED        : 2026-05-30
-LOCKED PROBLEM      : LogicLive — Server-Driven UI platform for internal tools (DB-resident Python logic editable by hand or scoped AI chat)
-STACK               : Python 3.11+ / FastAPI / SQLite / React 18 / Vite / Monaco / react-plotly.js / Ollama (qwen2.5-coder:7b)
+LAST UPDATED        : 2026-05-31
+LOCKED PROBLEM      : LogicLive — Server-Driven UI platform (un-pivoted 2026-05-30)
+SUBMISSION FRAMING  : LogicLive (full-stack app, responsibility #1) + Thinker engine (CLAUDE.md / claude_modules / system_rules, responsibility #4 — improve AI agents continuously). Both shipped together.
 
-PREVIOUS TASK (paused, not completed):
-  actual_sales_col_order — was IN PROGRESS at Step 1
-  BLAST RADIUS: view_supply_plan.py
-  Re-activate by running: init task → reuse those files
+═══════════════════════════════════════════════════════
+PENDING NEW STEPS (planning, not yet locked)
+═══════════════════════════════════════════════════════
+STEP 24 : Replace embedded hardcoded rows in sales_report widgets
+          with real `orders` DB table queries
+          - Create CREATE TABLE orders in db.py or via examples/orders_seed.py
+          - Seed ~30 realistic rows
+          - Update sales_report.yaml widgets so logic_code uses sqlite3
+            to SELECT from orders (sqlite3 already in sandbox allowlist)
+          - Re-seed + verify all 3 logic widgets still work with same
+            outputs, but data now comes from DB
+          - Demonstrates real DB-design chops (JD must-have)
+
+STEP 25 : Debug AI chat (root cause TBD pending user diagnostic)
+          - Most likely: Ollama not set up locally
+          - Need user to share: what they saw / browser console / uvicorn
+            logs / output of `ollama list`
+
+═══════════════════════════════════════════════════════
+DEFERRED SIDE TASK (preserved, not active)
+═══════════════════════════════════════════════════════
+NAME                : multiagent_dev_studio / AgentStudio
+DISPOSITION         : Context file fully written + flow skeleton present.
+                      Preserved at task_multiagent_dev_studio_*.txt as a
+                      v2 / "what's next" artifact. Mentioned in video as
+                      "currently building the next iteration."
+REASON FOR DEFER    : JD reread revealed "AI Engineer" at Damco means
+                      "full-stack engineer using AI as primary tool" —
+                      NOT "builds agentic products." LogicLive is more
+                      on-target than AgentStudio for the role's
+                      complete-application emphasis.
+PRESERVED ARTIFACTS : task_multiagent_dev_studio_context.txt (full plan,
+                      prior-art table, two-loop architecture, parallel
+                      execution map, CLI design decisions — all captured)
 
 ═══════════════════════════════════════════════════════

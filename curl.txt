@@ -1,0 +1,15 @@
+curl ^"http://127.0.0.1:5186/api/ai/generate^" ^
+  -H ^"Accept: text/event-stream^" ^
+  -H ^"Accept-Language: en-US,en;q=0.9,en-IN;q=0.8,sv;q=0.7^" ^
+  -H ^"Connection: keep-alive^" ^
+  -H ^"Content-Type: application/json^" ^
+  -H ^"Origin: http://127.0.0.1:5186^" ^
+  -H ^"Referer: http://127.0.0.1:5186/editor?screen=sales_report^" ^
+  -H ^"Sec-Fetch-Dest: empty^" ^
+  -H ^"Sec-Fetch-Mode: cors^" ^
+  -H ^"Sec-Fetch-Site: same-origin^" ^
+  -H ^"User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0^" ^
+  -H ^"sec-ch-ua: ^\^"Chromium^\^";v=^\^"148^\^", ^\^"Microsoft Edge^\^";v=^\^"148^\^", ^\^"Not/A)Brand^\^";v=^\^"99^\^"^" ^
+  -H ^"sec-ch-ua-mobile: ?0^" ^
+  -H ^"sec-ch-ua-platform: ^\^"Windows^\^"^" ^
+  --data-raw ^"^{^\^"screen_id^\^":^\^"sales_report^\^",^\^"widget_id^\^":^\^"chart.revenue^\^",^\^"prompt^\^":^\^"explain what this widget does^\^",^\^"mode^\^":^\^"explain^\^"^}^"

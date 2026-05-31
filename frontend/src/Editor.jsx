@@ -11,13 +11,18 @@ import { CodeEditor } from './editor/CodeEditor.jsx'
 import { LivePreview } from './editor/LivePreview.jsx'
 import { ChatPanel } from './editor/ChatPanel.jsx'
 
-function getScreenIdFromUrl() {
-  return new URLSearchParams(window.location.search).get('screen')
+function getQueryParam(name) {
+  return new URLSearchParams(window.location.search).get(name)
 }
 
 export default function Editor() {
-  const screenId = getScreenIdFromUrl()
-  const [selectedWidgetId, setSelectedWidgetId] = useState(null)
+  const screenId = getQueryParam('screen')
+  // Seed selection + chat prefill from /plan's BuildButton handoff.
+  // Read once at mount; the user can later select other widgets normally.
+  const [selectedWidgetId, setSelectedWidgetId] = useState(
+    () => getQueryParam('select'),
+  )
+  const [chatPrefill] = useState(() => getQueryParam('prefill') || '')
 
   if (!screenId) {
     return (
@@ -35,7 +40,9 @@ export default function Editor() {
   }
 
   return (
-    <div className="editor-shell">
+    // height:100% overrides editor.css's height:100vh so we fit inside
+    // App.jsx's flex shell (TopNav above + this below).
+    <div className="editor-shell" style={{ height: '100%' }}>
       <header className="editor-header">
         <span className="editor-header-title">LogicLive Editor</span>
         <span className="editor-header-screen">
@@ -61,7 +68,11 @@ export default function Editor() {
       </main>
 
       <aside className="editor-pane editor-chat">
-        <ChatPanel screenId={screenId} widgetId={selectedWidgetId} />
+        <ChatPanel
+          screenId={screenId}
+          widgetId={selectedWidgetId}
+          prefill={chatPrefill}
+        />
       </aside>
     </div>
   )

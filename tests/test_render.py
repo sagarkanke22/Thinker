@@ -330,7 +330,7 @@ def test_ai_generate_missing_prompt_returns_400(client):
 
 
 def test_ai_generate_happy_path_emits_token_and_done_events(client, monkeypatch):
-    monkeypatch.setattr("logiclive.app.stream_ollama", _good_stream_factory())
+    monkeypatch.setattr("logiclive.app.stream_llm", _good_stream_factory())
     r = client.post("/ai/generate", json={
         "screen_id": "t", "widget_id": "hello", "prompt": "say hi",
     })
@@ -346,7 +346,7 @@ def test_ai_generate_happy_path_emits_token_and_done_events(client, monkeypatch)
 def test_ai_generate_C019_retries_when_no_return(client, monkeypatch):
     """[C019] proof: if attempt 1 lacks `return`, server retries once with
     a fixup directive; final output has has_return=true + retried=true."""
-    monkeypatch.setattr("logiclive.app.stream_ollama", _retry_stream_factory())
+    monkeypatch.setattr("logiclive.app.stream_llm", _retry_stream_factory())
     r = client.post("/ai/generate", json={
         "screen_id": "t", "widget_id": "hello", "prompt": "anything",
     })
@@ -360,7 +360,7 @@ def test_ai_generate_C019_retries_when_no_return(client, monkeypatch):
 
 
 def test_ai_generate_propagates_ollama_errors(client, monkeypatch):
-    monkeypatch.setattr("logiclive.app.stream_ollama", _erroring_stream_factory())
+    monkeypatch.setattr("logiclive.app.stream_llm", _erroring_stream_factory())
     r = client.post("/ai/generate", json={
         "screen_id": "t", "widget_id": "hello", "prompt": "anything",
     })
@@ -368,3 +368,57 @@ def test_ai_generate_propagates_ollama_errors(client, monkeypatch):
     body = r.text
     assert "event: error" in body
     assert "ollama down" in body
+
+
+# ───────────────────────────────────────────────────────────────────
+# /test (Step 26) — run logic_code without persisting, capture stdout
+# ───────────────────────────────────────────────────────────────────
+
+def test_test_missing_logic_code_returns_400(client):
+    r = client.post("/test", json={"params": {}})
+    assert r.status_code == 400
+
+
+def test_test_happy_path_returns_result_and_stdout(client):
+    code = """
+def render(params):
+    print("hello from inside render")
+    print("params:", params)
+    return {"children": "hi " + params.get("name", "world")}
+"""
+    r = client.post("/test", json={
+        "logic_code": code,
+        "params": {"name": "sagar"},
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert body["result"]["children"] == "hi sagar"
+    assert "hello from inside render" in body["stdout"]
+    assert "sagar" in body["stdout"]
+
+
+def test_test_runtime_error_returns_ok_false(client):
+    code = """
+def render(params):
+    return 1 / 0
+"""
+    r = client.post("/test", json={"logic_code": code})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is False
+    assert body["result"]["error"]["type"] == "runtime"
+    assert "ZeroDivisionError" in body["result"]["error"]["message"]
+
+
+def test_test_does_not_persist_to_db(client):
+    """[C016] /test is transient — even a real widget_id passed as params
+    shouldn't update the widgets table because /test doesn't touch DB."""
+    # Run a test that would set a marker if it leaked to DB
+    code = "def render(params): return {'children': 'transient'}"
+    r = client.post("/test", json={"logic_code": code})
+    assert r.status_code == 200
+    # Confirm widget table untouched — fetch the hello widget, it's unchanged
+    r2 = client.get("/logic", params={"screen_id": "t", "widget_id": "hello"})
+    assert "def render(params)" in r2.json()["logic_code"]
+    assert "transient" not in r2.json()["logic_code"]

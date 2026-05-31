@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Optional
 
 from dotenv import load_dotenv
-from sqlalchemy import Column, DateTime, JSON, String, Text, Engine, create_engine
+from sqlalchemy import Column, DateTime, Integer, JSON, String, Text, Engine, create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 load_dotenv()
@@ -54,6 +54,44 @@ class Widget(Base):
         onupdate=datetime.utcnow,
         nullable=False,
     )
+
+
+class Conversation(Base):
+    """One row per saved /plan discovery chat. Persists across browser
+    refreshes. messages is the full array of {role, agent?, content},
+    stored as JSON — load-all-at-once pattern (not message-level queries).
+    title is auto-generated from the first user message on first save.
+    """
+
+    __tablename__ = "conversations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String, nullable=False, default="New chat")
+    messages = Column(JSON, nullable=False, default=list)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+
+class Order(Base):
+    """Sample business data — sales orders. Used by the demo screen's
+    widgets (text.total_kpi / table.results / chart.revenue) to prove
+    that widget logic queries a real DB table, not embedded constants.
+
+    Seeded via examples/orders_seed.py.
+    """
+
+    __tablename__ = "orders"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(String, nullable=False, index=True)     # ISO YYYY-MM-DD
+    product = Column(String, nullable=False, index=True)
+    qty = Column(Integer, nullable=False)
+    revenue = Column(Integer, nullable=False)
 
 
 def make_engine(url: Optional[str] = None) -> Engine:

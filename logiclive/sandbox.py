@@ -67,8 +67,14 @@ _RUNNER = textwrap.dedent('''
     code = payload["code"]
     params = payload.get("params", {})
 
-    # Restricted builtins — explicitly no __import__, eval, exec, open,
-    # compile, getattr, setattr, delattr, globals, locals, vars.
+    # Builtins allowlist. Per Step 38 (2026-05-31), __import__ is now
+    # allowed so widget code can use `import` statements freely. This
+    # weakens the sandbox — user code can now reach `os`, `subprocess`,
+    # `socket`, the filesystem etc. — but matches the "developer
+    # convenience > defense-in-depth" tradeoff made by the project owner
+    # for local-dev / demo usage. Still blocked: eval, exec, compile,
+    # globals/locals/vars (mutation surface), open/getattr/setattr at
+    # builtin level.
     _BI = __builtins__ if isinstance(__builtins__, dict) else __builtins__.__dict__
     _SAFE = {k: _BI[k] for k in (
         "abs", "all", "any", "bool", "dict", "enumerate", "filter",
@@ -77,6 +83,7 @@ _RUNNER = textwrap.dedent('''
         "sorted", "str", "sum", "tuple", "type", "zip",
         "Exception", "ValueError", "TypeError", "KeyError", "IndexError",
         "ZeroDivisionError", "AttributeError",
+        "__import__",  # Step 38 — enables `import X` in widget code
     ) if k in _BI}
 
     # Pre-imported allowlisted modules live in globals.
@@ -119,11 +126,16 @@ _RUNNER = textwrap.dedent('''
                     else:
                         result_envelope = result
 
+    # Wrap with captured stdout so exec_logic can surface it when asked.
+    captured_stdout = _scratch.getvalue()
     try:
-        out = json.dumps(result_envelope)
+        out = json.dumps({"_result": result_envelope, "_stdout": captured_stdout})
     except (TypeError, ValueError) as e:
-        out = json.dumps({"error": {"type": "non_serializable",
-            "message": f"render result not JSON-serializable: {e}"}})
+        out = json.dumps({
+            "_result": {"error": {"type": "non_serializable",
+                "message": f"render result not JSON-serializable: {e}"}},
+            "_stdout": captured_stdout,
+        })
 
     # Single, clean JSON line on stdout — the sole IPC channel.
     sys.stdout.write(out)
@@ -135,6 +147,7 @@ def exec_logic(
     params: dict[str, Any] | None = None,
     timeout: float = 5.0,
     mem_mb: int = 128,
+    capture_stdout: bool = False,
 ) -> dict:
     """Execute widget logic_code in a fresh sandboxed subprocess.
 
@@ -143,10 +156,16 @@ def exec_logic(
         params: dict passed to `render(params)`. Defaults to {}.
         timeout: wall-clock seconds before SIGKILL. Defaults to 5.
         mem_mb: address-space cap in megabytes. 0 disables. Defaults to 128.
+        capture_stdout: if True, return {"result": ..., "stdout": ..., "stderr": ...}
+                        instead of unwrapped result. Used by /test endpoint
+                        for debugging. Default False keeps /render and /action
+                        backward-compatible (they get the unwrapped dict).
 
     Returns:
-        The dict returned by `render(params)`, OR a `{"error": ...}` envelope
-        describing the failure mode. Never raises.
+        capture_stdout=False (default): the dict returned by render(params),
+                                        or an {"error": ...} envelope.
+        capture_stdout=True: {"result": <dict-or-error>, "stdout": <str>,
+                              "stderr": <str>} envelope. Never raises.
     """
     params = params or {}
     mem_bytes = max(0, mem_mb) * 1024 * 1024
@@ -161,21 +180,45 @@ def exec_logic(
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
-        return {"error": {"type": "timeout",
-                          "message": f"exceeded {timeout}s budget"}}
+        err = {"error": {"type": "timeout",
+                         "message": f"exceeded {timeout}s budget"}}
+        if capture_stdout:
+            return {"result": err, "stdout": "",
+                    "stderr": f"killed after {timeout}s"}
+        return err
+
+    captured_stderr = proc.stderr.strip()[:2000]
 
     if proc.returncode != 0:
-        return {"error": {"type": "sandbox_exit",
-                          "message": f"exit={proc.returncode}; "
-                                     f"stderr={proc.stderr.strip()[:500]}"}}
+        err = {"error": {"type": "sandbox_exit",
+                         "message": f"exit={proc.returncode}; "
+                                    f"stderr={captured_stderr[:500]}"}}
+        if capture_stdout:
+            return {"result": err, "stdout": "", "stderr": captured_stderr}
+        return err
 
     out = proc.stdout.strip()
     if not out:
-        return {"error": {"type": "no_output",
-                          "message": "subprocess produced no stdout"}}
+        err = {"error": {"type": "no_output",
+                         "message": "subprocess produced no stdout"}}
+        if capture_stdout:
+            return {"result": err, "stdout": "", "stderr": captured_stderr}
+        return err
 
     try:
-        return json.loads(out)
+        wrapped = json.loads(out)
     except json.JSONDecodeError as e:
-        return {"error": {"type": "bad_output",
-                          "message": f"could not parse runner output: {e}"}}
+        err = {"error": {"type": "bad_output",
+                         "message": f"could not parse runner output: {e}"}}
+        if capture_stdout:
+            return {"result": err, "stdout": "", "stderr": captured_stderr}
+        return err
+
+    # Runner now always emits {"_result": ..., "_stdout": ...}
+    result = wrapped.get("_result", wrapped)  # back-compat if older runner
+    user_stdout = wrapped.get("_stdout", "")
+
+    if capture_stdout:
+        return {"result": result, "stdout": user_stdout,
+                "stderr": captured_stderr}
+    return result

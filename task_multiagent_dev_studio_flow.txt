@@ -1,0 +1,18 @@
+═══════════════════════════════════════════════════════
+TASK FLOW — multiagent_dev_studio
+═══════════════════════════════════════════════════════
+
+(Empty skeleton. Steps will be written in PHASE 2 / STEP 5 after the
+plan is confirmed.)
+
+BLAST RADIUS (filled at STEP 4):
+  FILES CHANGING  : [pending]
+  FILES READING   : [pending]
+  FILES UNTOUCHED : [pending]
+  ROLLBACK ORDER  : [pending]
+  CONFLICT RISK   : [pending]
+
+STEPS:
+  (none yet — pending PHASE 2)
+
+═══════════════════════════════════════════════════════

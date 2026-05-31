@@ -31,14 +31,16 @@ def db_session():
     engine = make_engine(f"sqlite:///{path}")
     Base.metadata.create_all(bind=engine)
 
-    # Simulated user table
+    # Simulated user table. Named `test_sales` (not `orders`) to avoid
+    # collision with the real Order model which now auto-creates an
+    # `orders` table via Base.metadata.create_all.
     with engine.connect() as conn:
         conn.execute(text(
-            "CREATE TABLE orders (id INTEGER PRIMARY KEY, "
+            "CREATE TABLE test_sales (id INTEGER PRIMARY KEY, "
             "product TEXT, qty INTEGER, revenue REAL)"
         ))
         conn.execute(text(
-            "INSERT INTO orders (product, qty, revenue) VALUES "
+            "INSERT INTO test_sales (product, qty, revenue) VALUES "
             "('Coke 500ml', 100, 5000.0), "
             "('Sprite 500ml', 50, 2500.0)"
         ))
@@ -79,7 +81,7 @@ def test_get_db_schema_text_includes_widgets_table(db_session):
 
 def test_get_db_schema_text_includes_user_tables(db_session):
     schema = get_db_schema_text(db_session.bind)
-    assert "orders" in schema
+    assert "test_sales" in schema
     assert "product" in schema
     assert "revenue" in schema
 
@@ -93,7 +95,7 @@ def test_get_sample_rows_skips_widgets_table(db_session):
 
 def test_get_sample_rows_includes_user_data(db_session):
     samples = get_sample_rows_text(db_session)
-    assert "orders" in samples
+    assert "test_sales" in samples
     assert "Coke" in samples
     assert "Sprite" in samples
 
@@ -131,7 +133,7 @@ def test_build_prompt_contains_all_C018_ingredients(db_session):
     )
     # 1. DB schema
     assert "=== DB SCHEMA ===" in prompt
-    assert "orders" in prompt  # via schema
+    assert "test_sales" in prompt  # via schema
     # 2. Sample rows
     assert "=== SAMPLE ROWS ===" in prompt
     assert "Coke" in prompt

@@ -556,3 +556,111 @@ L038 | DATE: 2026-05-21
                   "Incorrect syntax near 'value'" and a downstream KeyError on 'week_end_date'.
       HOW TO APPLY: Before any string operation on items from all_iterations or compare_options,
                     normalize with: val = it['value'] if isinstance(it, dict) else it
+
+───────────────────────────────────────────────────────
+
+L039 | DATE: 2026-05-31
+      TYPE: CODEBASE / WIRE FORMAT
+      LEARNING: When parsing a Server-Sent Events stream from fetch().body in the
+                browser, the frame separator regex MUST accept both LF-LF (\n\n)
+                and CRLF-CRLF (\r\n\r\n). Splitting on the literal string '\n\n'
+                silently fails on CRLF streams because the two \n chars in
+                '\r\n\r\n' are NOT consecutive (a \r sits between them) — the
+                String.split('\n\n') returns the original buffer unchanged, all
+                frames accumulate into one giant buffer, and only the trailing
+                end-of-stream flush parses anything, with all data lines
+                concatenated into a single mangled "frame".
+                Symptom: chunks arrive, console shows correct SSE bytes, but
+                event count stays at 0/1 and the UI never updates because
+                onEvent never fires per token.
+                Pattern: `buf.split(/\r?\n\r?\n/)` — handles both LF and CRLF
+                Same pattern applies to the inner line splitter inside one
+                frame: `frame.split(/\r?\n/)` not `frame.split('\n')`.
+      ROOT CAUSE: Anthropic's HTTP SSE response uses CRLF line endings per RFC
+                  2616 (HTTP/1.1), while sse-starlette in earlier versions used
+                  LF. Browsers and proxies don't normalize SSE bodies. A parser
+                  written against one server can silently break against another
+                  even though the wire is RFC-compliant.
+      HOW TO APPLY: Any custom SSE parser over fetch().body MUST split frames
+                    on `/\r?\n\r?\n/` and lines on `/\r?\n/`. Never use the
+                    literal-string '\n\n'. If parser must also be lenient on
+                    `event:` headers (some servers omit the trailing space),
+                    use `.startsWith('event:')` and `.slice(6).trim()`, not
+                    `.startsWith('event: ')`.
+
+───────────────────────────────────────────────────────
+
+L040 | DATE: 2026-05-31
+      TYPE: PROMPT ENGINEERING
+      LEARNING: When an LLM agent runs code in a sandbox with non-standard
+                rules (pre-injected modules, blocked builtins, etc.), the
+                rules MUST appear in the prompt with EXPLICIT WRONG/RIGHT
+                pairs — bullet-point prose isn't enough. Claude (and most
+                LLMs) default to Python muscle memory: `from datetime import
+                datetime` then `datetime.strptime(...)`. Telling it "no
+                imports allowed" eliminates the import line but it then
+                writes `datetime.strptime(...)` against the bare module,
+                which fails with "module 'datetime' has no attribute
+                'strptime'". The fix that worked: side-by-side WRONG/RIGHT
+                pairs for every common gotcha (datetime.datetime,
+                datetime.timedelta, datetime.date, etc.) with the exact
+                error message you'd see for each wrong form.
+                Also: review/optimize/explain modes need explicit
+                instructions to CONSULT the sandbox rules, not just have
+                them in the prompt. A reviewer that doesn't know "look
+                at the sandbox section" will give Python-default advice
+                like "move imports to the top" which is wrong here.
+      ROOT CAUSE: Generic "no imports" rule was in the prompt but the
+                  positive form (how to USE datetime correctly without
+                  importing) was only one example, not a full table. AI
+                  followed the negative rule but pattern-matched on
+                  standard Python usage for everything else.
+      HOW TO APPLY: For ANY sandboxed exec environment:
+                    1. List pre-injected names explicitly
+                    2. For each, show WRONG (with exact error msg) and
+                       RIGHT side by side
+                    3. Add a "rule of thumb" sentence summarising the
+                       pattern (e.g. "every datetime name starts with
+                       datetime.")
+                    4. In secondary modes (review, optimize, explain),
+                       explicitly tell the AI to cross-check sandbox
+                       rules before giving fix recommendations.
+                    Silence on a constraint = AI defaulting to its
+                    training distribution, which is general Python.
+
+───────────────────────────────────────────────────────
+
+L041 | DATE: 2026-05-31
+      TYPE: POLICY CHANGE
+      LEARNING: LogicLive's widget sandbox originally blocked __import__
+                entirely (defence in depth — prevented `import os`,
+                `import subprocess`, lazy-import traps in stdlib like
+                strptime). Per Step 38, this was REVERSED — __import__
+                is now in the _SAFE allowlist in sandbox.py. Imports
+                are allowed.
+                CONSEQUENCE: widget code can now reach `os`,
+                `subprocess`, `socket`, the filesystem, the network —
+                anything the parent process can do. The remaining
+                isolation is just RLIMIT_AS (128MB) + subprocess
+                timeout (5s) + still-blocked builtins
+                (eval/exec/compile/globals/locals/vars).
+                RATIONALE: developer velocity > defence in depth for
+                local-dev / demo / single-user usage. The lazy-import
+                traps (L040) auto-resolved as a side benefit since
+                datetime.datetime.strptime can now lazy-import
+                _strptime successfully.
+      ROOT CAUSE: AI generation kept producing idiomatic Python that
+                  used imports, and prompt-engineering workarounds
+                  were brittle (every new stdlib function with lazy
+                  imports was a new failure mode). Sandbox rules per
+                  L040 helped but couldn't cover the long tail.
+      HOW TO APPLY: If re-tightening for prod/multi-user:
+                    1. Remove "__import__" from sandbox.py:_SAFE
+                    2. Restore the prior SANDBOX_RULES block in ai.py
+                       (see git history for Step 36-37)
+                    3. Restore CRITICAL sections in review/optimize
+                       mode headers
+                    4. Restore CODE DRAFT no-import rule in agents.py
+                    Threat model decision: how trusted is the AI
+                    output? Local-dev = trusted (this state). Prod =
+                    NOT trusted — re-enable blocking.

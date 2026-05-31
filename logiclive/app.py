@@ -21,15 +21,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
+from logiclive.agents import build_agent_prompt
 from logiclive.ai import (
     build_prompt,
     get_db_schema_text,
     get_sample_rows_text,
     get_widget_base_config,
     get_widget_prior_logic,
-    stream_ollama,
+    stream_llm,
 )
-from logiclive.db import SessionLocal, Widget, init_db
+from logiclive.db import Conversation, SessionLocal, Widget, init_db
 from logiclive.sandbox import exec_logic
 from logiclive.widgets_registry import KNOWN_TYPES, merge_render
 
@@ -71,12 +72,78 @@ class SaveRequest(BaseModel):
     logic_code: str | None = None  # None = clear the logic_code
 
 
+class ConversationCreateRequest(BaseModel):
+    """POST /conversations body. Title is optional — first PUT will
+    typically auto-derive it from the first user message."""
+    title: str | None = None
+
+
+class ConversationUpdateRequest(BaseModel):
+    """PUT /conversations/{id} body. Either field may be omitted; only
+    provided fields are written. messages REPLACES the entire array."""
+    title: str | None = None
+    messages: list[dict] | None = None
+
+
+class DiscussRequest(BaseModel):
+    """POST /ai/discuss body. One turn in the discovery chat at /plan.
+    `agent` is which specialist answers (backend | frontend).
+    `history` is the prior messages (each {role, agent?, content}) so the
+    agent has full conversational context. Not persisted server-side."""
+    prompt: str | None = None
+    agent: str | None = None
+    history: list[dict] | None = None
+
+
 class AIGenerateRequest(BaseModel):
     """POST /ai/generate body. [C021]/[L026] — explicit truthy guards
-    on all three fields live in the handler."""
+    on all three fields live in the handler.
+
+    `mode` controls the response shape:
+      generate (default) — Python code, /save-applicable
+      explain | review | optimize — prose, NOT applicable
+
+    `history` is the per-widget chat conversation (most recent ~10 turns,
+    [{role, content}]) so multi-turn references like "add a LIMIT" know
+    what "it" refers to (the prior code, not just the schema). Optional.
+    """
     screen_id: str | None = None
     widget_id: str | None = None
     prompt: str | None = None
+    mode: str | None = "generate"
+    history: list[dict] | None = None
+
+
+class TestRequest(BaseModel):
+    """POST /test body. Used by the editor's Test button to run a
+    candidate logic_code WITHOUT persisting it to the DB. Returns
+    captured stdout + result so the dev can debug.
+
+    No screen_id / widget_id needed — this is purely transient.
+    """
+    logic_code: str | None = None
+    params: dict | None = None
+
+
+class CreateWidgetRequest(BaseModel):
+    """POST /widget body. Creates a new Widget row with a server-side
+    default base_config for the chosen type. AI fills in logic_code
+    afterwards via the existing /ai/generate flow."""
+    screen_id: str | None = None
+    widget_id: str | None = None
+    type: str | None = None
+
+
+# [C015] base_config templates are HUMAN-defined here, not AI-generated.
+# When user clicks "+ Add Widget" the backend stamps the appropriate
+# template into the DB row. AI then fills in logic_code only.
+WIDGET_TEMPLATES: dict[str, dict] = {
+    "text":   {"type": "text",   "props": {"tag": "p"}},
+    "input":  {"type": "input",  "props": {"kind": "text", "placeholder": ""}},
+    "button": {"type": "button", "props": {"label": "Click me"}},
+    "table":  {"type": "table",  "props": {"columns": []}},
+    "chart":  {"type": "chart",  "props": {"layout": {"title": "Untitled"}}, "data": []},
+}
 
 
 @asynccontextmanager
@@ -94,12 +161,12 @@ app = FastAPI(
 )
 
 # [C017] CORS for the Vite dev server. Tight allowlist — no wildcards in prod.
+# Vite may auto-bump from 5173 → 5174/5186/etc when the port is busy, so the
+# allowlist covers a small range of dev-only ports. Also needed for the SSE
+# bypass: ChatPanel hits backend directly instead of proxying through Vite.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1):(517[0-9]|518[0-9])$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -275,6 +342,115 @@ async def save_logic(
     }
 
 
+@app.post("/widget")
+async def create_widget(
+    payload: CreateWidgetRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Create a new Widget row with a server-side default base_config.
+    [C015] base_config comes from WIDGET_TEMPLATES — never from a client.
+    logic_code is left NULL — the user fills it in via the editor or AI.
+
+    Fires a 'widget-changed' SSE event so any open sidebar refreshes.
+    """
+    # [C021]/[L026] explicit truthy guards
+    if not payload.screen_id:
+        raise HTTPException(status_code=400, detail="screen_id required")
+    if not payload.widget_id:
+        raise HTTPException(status_code=400, detail="widget_id required")
+    if not payload.type:
+        raise HTTPException(status_code=400, detail="type required")
+    if payload.type not in WIDGET_TEMPLATES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown type: {payload.type!r}. Allowed: {sorted(WIDGET_TEMPLATES)}",
+        )
+
+    existing = db.get(Widget, (payload.screen_id, payload.widget_id))
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"widget already exists: {payload.screen_id}/{payload.widget_id}",
+        )
+
+    widget = Widget(
+        screen_id=payload.screen_id,
+        widget_id=payload.widget_id,
+        base_config=dict(WIDGET_TEMPLATES[payload.type]),
+        logic_code=None,
+    )
+    db.add(widget)
+    db.commit()
+
+    await publish_widget_changed(payload.screen_id, payload.widget_id)
+
+    return {
+        "ok": True,
+        "screen_id": payload.screen_id,
+        "widget_id": payload.widget_id,
+        "type": payload.type,
+    }
+
+
+@app.delete("/widget/{screen_id}/{widget_id}")
+async def delete_widget(
+    screen_id: str,
+    widget_id: str,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Hard-delete a widget. Fires `widget-changed` so any open LivePreview
+    re-fetches the screen and drops the now-missing widget."""
+    widget = db.get(Widget, (screen_id, widget_id))
+    if widget is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"widget not found: {screen_id}/{widget_id}",
+        )
+    db.delete(widget)
+    db.commit()
+    await publish_widget_changed(screen_id, widget_id)
+    return {"ok": True, "screen_id": screen_id, "widget_id": widget_id}
+
+
+@app.post("/test")
+def test_logic(payload: TestRequest) -> dict:
+    """Run a candidate logic_code in the sandbox WITHOUT persisting.
+
+    Response:
+      { "ok": bool, "result": dict, "stdout": str, "stderr": str,
+        "duration_ms": int, "error"?: { type, message } }
+
+    `result` is the dict returned by render(params) — or an error
+    envelope from the sandbox. `stdout` is whatever the user code
+    printed. `stderr` is subprocess stderr. `duration_ms` is how long
+    the sandbox call took (wall-clock).
+
+    Powers the editor's Test button — dev can vet AI-generated or
+    hand-written code before clicking Save.
+    """
+    import time
+    # [C021]/[L026] explicit truthy guard
+    if not payload.logic_code:
+        raise HTTPException(status_code=400, detail="logic_code required")
+
+    t0 = time.perf_counter()
+    # [C016] fresh sandbox per test
+    envelope = exec_logic(
+        payload.logic_code,
+        payload.params or {},
+        capture_stdout=True,
+    )
+    duration_ms = int((time.perf_counter() - t0) * 1000)
+    result = envelope["result"]
+    return {
+        "ok": "error" not in result,
+        "result": result,
+        "stdout": envelope.get("stdout", ""),
+        "stderr": envelope.get("stderr", ""),
+        "duration_ms": duration_ms,
+    }
+
+
 @app.post("/ai/generate")
 async def ai_generate(
     payload: AIGenerateRequest,
@@ -297,6 +473,10 @@ async def ai_generate(
     if not payload.prompt:
         raise HTTPException(status_code=400, detail="prompt required")
 
+    mode = (payload.mode or "generate").lower()
+    if mode not in {"generate", "explain", "review", "optimize"}:
+        raise HTTPException(status_code=400, detail=f"unknown mode: {mode}")
+
     # [C018] assemble the full prompt synchronously (uses the request's DB session)
     full_prompt = build_prompt(
         payload.prompt,
@@ -308,12 +488,14 @@ async def ai_generate(
         prior_logic=get_widget_prior_logic(
             db, payload.screen_id, payload.widget_id
         ),
+        mode=mode,
+        history=payload.history or [],
     )
 
     async def stream():
         first_out: list[str] = []
         try:
-            async for token in stream_ollama(full_prompt):
+            async for token in stream_llm(full_prompt):
                 first_out.append(token)
                 yield {"event": "token", "data": json.dumps({"text": token})}
         except Exception as e:
@@ -325,8 +507,9 @@ async def ai_generate(
         retried = False
         final_text = first_text
 
-        # [C019] retry-once on missing explicit return
-        if "return" not in first_text:
+        # [C019] retry-once on missing explicit return — generate mode only.
+        # Prose modes (explain/review/optimize) don't produce code.
+        if mode == "generate" and "return" not in first_text:
             retried = True
             fixup_prompt = (
                 full_prompt
@@ -336,7 +519,7 @@ async def ai_generate(
             )
             retry_out: list[str] = []
             try:
-                async for token in stream_ollama(fixup_prompt):
+                async for token in stream_llm(fixup_prompt):
                     retry_out.append(token)
                     yield {
                         "event": "token",
@@ -354,8 +537,133 @@ async def ai_generate(
                 "full_text": final_text,
                 "has_return": "return" in final_text,
                 "retried": retried,
+                "mode": mode,
             }),
         }
+
+    return EventSourceResponse(stream())
+
+
+@app.get("/conversations")
+def list_conversations(db: Session = Depends(get_db)) -> list[dict]:
+    """Sidebar feed for /plan. Newest first. Excludes the messages payload
+    to keep the response small — sidebar only needs id/title/updated_at."""
+    stmt = select(Conversation).order_by(Conversation.updated_at.desc())
+    rows = db.execute(stmt).scalars().all()
+    return [
+        {
+            "id": c.id,
+            "title": c.title,
+            "updated_at": c.updated_at.isoformat(),
+        }
+        for c in rows
+    ]
+
+
+@app.get("/conversations/{conv_id}")
+def get_conversation(conv_id: int, db: Session = Depends(get_db)) -> dict:
+    """Full payload — used when user clicks a conversation in the sidebar."""
+    c = db.get(Conversation, conv_id)
+    if c is None:
+        raise HTTPException(status_code=404, detail=f"conversation {conv_id} not found")
+    return {
+        "id": c.id,
+        "title": c.title,
+        "messages": c.messages or [],
+        "updated_at": c.updated_at.isoformat(),
+    }
+
+
+@app.post("/conversations")
+def create_conversation(
+    payload: ConversationCreateRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Create an empty conversation, return its id. Client immediately
+    starts PUT'ing messages as the user chats."""
+    c = Conversation(title=(payload.title or "New chat"), messages=[])
+    db.add(c)
+    db.commit()
+    db.refresh(c)
+    return {
+        "id": c.id,
+        "title": c.title,
+        "messages": [],
+        "updated_at": c.updated_at.isoformat(),
+    }
+
+
+@app.put("/conversations/{conv_id}")
+def update_conversation(
+    conv_id: int,
+    payload: ConversationUpdateRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Auto-save endpoint — frontend calls this after every chat turn.
+    messages REPLACES the existing array (not a delta)."""
+    c = db.get(Conversation, conv_id)
+    if c is None:
+        raise HTTPException(status_code=404, detail=f"conversation {conv_id} not found")
+    if payload.messages is not None:
+        c.messages = payload.messages
+    if payload.title is not None:
+        c.title = payload.title
+    db.commit()
+    return {"ok": True, "id": c.id}
+
+
+@app.delete("/conversations/{conv_id}")
+def delete_conversation(conv_id: int, db: Session = Depends(get_db)) -> dict:
+    """Hard-delete a saved conversation."""
+    c = db.get(Conversation, conv_id)
+    if c is None:
+        raise HTTPException(status_code=404, detail=f"conversation {conv_id} not found")
+    db.delete(c)
+    db.commit()
+    return {"ok": True, "id": conv_id}
+
+
+@app.post("/ai/discuss")
+async def ai_discuss(
+    payload: DiscussRequest,
+    db: Session = Depends(get_db),
+):
+    """Stream a specialist agent's prose answer for the /plan discovery chat.
+
+    SSE events:
+      - event: token  data: {"text": str}
+      - event: done   data: {"agent": str}
+      - event: error  data: {"message": str}
+
+    No [C019] retry — this is prose, not code; no `return` to require.
+    """
+    # [C021]/[L026] explicit guards
+    if not payload.prompt:
+        raise HTTPException(status_code=400, detail="prompt required")
+    if not payload.agent:
+        raise HTTPException(status_code=400, detail="agent required")
+    if payload.agent not in {"backend", "frontend"}:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown agent: {payload.agent!r}. Allowed: backend, frontend",
+        )
+
+    full_prompt = build_agent_prompt(
+        agent=payload.agent,
+        user_prompt=payload.prompt,
+        history=payload.history or [],
+        db=db,
+    )
+
+    async def stream():
+        try:
+            async for token in stream_llm(full_prompt):
+                yield {"event": "token", "data": json.dumps({"text": token})}
+        except Exception as e:
+            yield {"event": "error",
+                   "data": json.dumps({"message": str(e)})}
+            return
+        yield {"event": "done", "data": json.dumps({"agent": payload.agent})}
 
     return EventSourceResponse(stream())
 

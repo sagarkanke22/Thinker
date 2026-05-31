@@ -1,0 +1,226 @@
+═══════════════════════════════════════════════════════
+TASK CONTEXT — multiagent_dev_studio
+═══════════════════════════════════════════════════════
+
+TASK NAME       : multiagent_dev_studio
+WORKING NAME    : AgentStudio (placeholder — finalize before submission)
+REFERENCE FILE  : /home/sagar123/Thinker/damco_task.txt
+TRACK           : A (Engineer)
+SUBMISSION      : Damco Builder Challenge
+
+PRIOR TASK      : understand_damco_task / LogicLive (paused at Step 23,
+                  external pieces never done). Files preserved as a
+                  side-project / portfolio artifact. NOT being shipped
+                  for Damco.
+
+═══════════════════════════════════════════════════════
+PROBLEM STATEMENT
+═══════════════════════════════════════════════════════
+Full-stack development with a single AI agent (Claude / Cursor / etc.)
+hits a coordination wall: one agent can't simultaneously hold the
+mental models for "react component conventions" AND "FastAPI endpoint
+contracts" AND "DB schema discipline." Context windows fill with
+mixed-domain rules and the agent starts mixing FE patterns into BE
+code, missing contract changes, or trampling files outside the safe
+zone.
+
+I lived this building Thinker — a single-agent stateful executor
+designed to keep Claude on-task across sessions. Thinker works for
+small surgical changes but breaks down on coordinated full-stack work.
+Every plan-then-execute cycle the same single brain has to swap
+between domains.
+
+The answer isn't a smarter single agent. It's a TEAM with role-
+specialised agents, a coordinator, structured artifact-based
+communication, and a human-in-the-loop director.
+
+═══════════════════════════════════════════════════════
+ROOT CAUSE (evidence)
+═══════════════════════════════════════════════════════
+Direct observations from Thinker daily use:
+- Single agent loads the WHOLE rule book (R001–R010 + C001–C0NN + L*)
+  every prompt → tokens wasted, focus blurred
+- Cross-domain rules collide (a frontend MUI rule and a backend
+  SQLAlchemy rule are both "the right pattern" but for different
+  files)
+- Conflict detection is per-file, not per-domain — no semantic guard
+  against e.g. "FE expects /api/users but BE plan says /api/people"
+- Plan review by human is opaque — the user sees the agent's output,
+  not the agent's reasoning artifacts (context, plan, blast radius)
+- No specialisation pressure — agents drift toward generalist outputs
+  even when domain expertise would yield a sharper answer
+
+The competing landscape (CrewAI, AutoGen, LangGraph, Anthropic Swarm)
+assumes "agents chatter at each other and produce output." That makes
+the human a downstream consumer. The actual need is the OPPOSITE: the
+human is the conductor; the agents are auditioned specialists; the
+artifacts they produce are the medium.
+
+═══════════════════════════════════════════════════════
+FIX APPROACH — AgentStudio
+═══════════════════════════════════════════════════════
+A multi-agent development studio with four pillars:
+
+  1. Role-specialised agents — each loads ONLY its domain's rules.
+     Fullstack-lead, frontend-specialist, backend-specialist (and
+     room for more: db-specialist, infra, qa).
+
+  2. Plain-text artifacts as communication protocol — no agent-to-
+     agent chat. Each agent produces named files: backend_context.txt,
+     frontend_plan.txt, backend_blast_radius.txt, conflict_report.txt.
+     Everything diffable, git-trackable, audit-able.
+
+  3. Structured phases per agent, mirrored from Thinker —
+     CONTEXT → PLAN → REVIEW → EXECUTE → LEARN. Explicit gates
+     between phases. Lead enforces phase ordering across the team.
+
+  4. Human-as-system-component — the user has a privileged seat:
+     CREATE tasks, OBSERVE flow, APPROVE/VETO/REQUEST-CHANGE on
+     specialist plans before EXECUTE. Not a "tool" called by agents;
+     a first-class actor in the architecture.
+
+═══════════════════════════════════════════════════════
+WORKFLOW (the demo loop)
+═══════════════════════════════════════════════════════
+1. Human writes a task → studio_inbox/<task-id>.md
+2. Fullstack-lead reads the task, decomposes into FE + BE sub-tasks,
+   writes lead_decomposition.md (one paragraph per specialist)
+3. FE and BE specialists each enter PHASE 1 (CONTEXT):
+     - Read their decomposed brief
+     - Read THEIR scoped rule set (frontend/rules.md or backend/rules.md)
+     - Build their own context file (fe_context.md, be_context.md)
+4. Specialists enter PHASE 2 (PLAN):
+     - Each writes a step-by-step plan with BLAST RADIUS declaration
+     - fe_plan.md, be_plan.md
+5. Lead enters RECONCILE phase:
+     - Diff fe_plan.md vs be_plan.md
+     - Mechanical contract checks: does the BE plan expose every
+       endpoint the FE plan calls? Do field names match between
+       requests and responses? Are status-code contracts aligned?
+     - Output conflict_report.md (PASS / list of mismatches)
+6. Human REVIEW GATE:
+     - studio shows: brief + decomposition + both plans + conflict
+       report
+     - Human says: approve / veto / request-change-on-FE / request-
+       change-on-BE
+     - If request-change, that specialist re-enters PHASE 2 with the
+       feedback artifact
+7. EXECUTE phase: only after human approval
+     - Each specialist runs its plan, one step at a time, exactly like
+       Thinker's execution module enforces today
+     - Output: code changes + execution_log.md
+8. LEARN phase: each specialist captures domain learnings to
+   frontend/learnings.md or backend/learnings.md (private) and
+   generic learnings to shared/learnings.md
+
+═══════════════════════════════════════════════════════
+DIFFERENTIATOR (vs CrewAI / AutoGen / LangGraph)
+═══════════════════════════════════════════════════════
+1. Artifact-based communication (not chat) — every interaction is a
+   readable file. The whole project becomes a museum you can replay.
+2. Human-as-first-class actor — not a callback at the end. Built-in
+   review gate, manual phase advance, veto authority.
+3. Scoped rule sets per role — agents don't carry generalist baggage.
+4. Mechanical conflict reconciliation — the lead's "review" is a
+   diff + contract check, not an LLM vibe-check.
+5. Per-agent BLAST RADIUS declarations — safety carried over from
+   Thinker. Specialist must list "files I'll touch" BEFORE executing.
+
+═══════════════════════════════════════════════════════
+ACCEPTANCE CRITERIA
+═══════════════════════════════════════════════════════
+For Damco submission readiness:
+A. Vertical slice working end-to-end:
+   - Lead can decompose a written task
+   - Two specialists can each produce a plan
+   - Reconciler catches a deliberate contract mismatch in tests
+   - Human review CLI can approve / veto
+   - On approval, specialists execute and produce real code changes
+B. Eval harness: 10 sample tasks of varying complexity; track
+   success rate per agent role and reconciler precision/recall
+C. Demo video covers Problem Framing / System Design / Tradeoffs /
+   Failure Modes — leverages Thinker as the prior-art story
+D. README + GitHub + email submission
+
+═══════════════════════════════════════════════════════
+WHY THIS FITS DAMCO (AI Engineer Track A)
+═══════════════════════════════════════════════════════
+| Criterion | Score |
+|---|---|
+| Problem ID         | Lived friction — Thinker is daily-used proof. Single agent + full-stack = coordination wall. |
+| Tech Understanding | Multi-agent orchestration; per-role prompt engineering; artifact-based protocol; mechanical reconciliation; evals. |
+| Scoping            | Vertical slice over surface-completeness. 3 agents, 1 reconciler, 1 CLI, 10-task eval harness. |
+| Self-Awareness     | Named differentiator vs CrewAI etc.; honest tradeoffs on what's hard (cost, latency, conflict edge cases). |
+
+═══════════════════════════════════════════════════════
+HONEST TRADEOFFS (will be in README + video)
+═══════════════════════════════════════════════════════
+- Token cost: 3 agents × per-phase prompts = expensive vs single.
+  Mitigation: scoped rule sets (each agent loads small slice).
+- Latency: serial phases = slow. Mitigation: FE/BE specialists run
+  in parallel during CONTEXT + PLAN.
+- Conflict reconciliation is mechanical only for what's structurable
+  (API endpoints, types). Semantic conflicts ("FE expects sorted
+  data, BE returns unsorted") still need either a contract spec or
+  a human catch.
+- Specialist drift: if a role's rule set doesn't constrain enough,
+  the specialist regresses to generalist. Evals catch this.
+- No multi-user collaboration in v1 — single human director only.
+
+═══════════════════════════════════════════════════════
+SCOPE ESTIMATE (vertical slice, ~14 person-days)
+═══════════════════════════════════════════════════════
+- Engine core: agent registry + phase router + artifact protocol  : 2 days
+- Lead agent: decomposition + reconciliation                       : 2 days
+- Frontend specialist (rule set + CONTEXT/PLAN/EXECUTE modules)    : 2 days
+- Backend specialist  (rule set + CONTEXT/PLAN/EXECUTE modules)    : 2 days
+- Conflict reconciler: contract diff + report generator            : 1 day
+- Human review CLI                                                  : 1 day
+- Eval harness: 10 sample tasks + success-rate measurement         : 2 days
+- Demo polish + video + README + GitHub push                       : 2 days
+
+═══════════════════════════════════════════════════════
+OUT OF SCOPE FOR MVP (flag as "next steps" in video)
+═══════════════════════════════════════════════════════
+- Web UI (CLI for v1; web is v2)
+- More than 2 specialist roles (db / infra / qa = v2)
+- Multi-user / multi-director
+- Streaming agent output to UI (CLI is line-at-a-time for v1)
+- Cost/token tracking dashboard (just measure totals in eval)
+- Long-running agent memory (per-task fresh start in v1)
+
+═══════════════════════════════════════════════════════
+PROPOSED STACK
+═══════════════════════════════════════════════════════
+- Python 3.11+ (matches all priors)
+- Anthropic SDK (claude-sonnet for specialists; claude-opus for lead?)
+  OR Ollama for fully-local (decision deferred to PHASE 2)
+- pydantic for artifact schemas
+- pytest for eval harness
+- Click or Typer for CLI
+- File-based everything — no DB, no servers, plain markdown + json
+
+═══════════════════════════════════════════════════════
+LEVERAGE FROM PRIOR WORK
+═══════════════════════════════════════════════════════
+- CLAUDE.md / claude_modules pattern → blueprint for each agent's rule set
+- Thinker's STEP 1-5 INITIALIZATION flow → reused for specialists' CONTEXT/PLAN
+- BLAST RADIUS protocol → carried over verbatim
+- system_rules_and_learning.txt structure → per-agent learnings file
+- LogicLive's sandbox.py + sse-starlette experience → reusable building
+  blocks if we later add a web UI (v2)
+
+═══════════════════════════════════════════════════════
+NOTES
+═══════════════════════════════════════════════════════
+- Working name AgentStudio is a placeholder. Other candidates:
+  AgentMesh, DevSwarm, StageRoles, Conductor, Studio.dev.
+- Decision pending in PHASE 1.5: which LLM(s)? Local-only via Ollama
+  is on-brand for the same "no data leaves" pitch we had in LogicLive.
+  Claude API is stronger but loses that angle. Open question.
+- Honest framing of pivot in video: "I shipped a Server-Driven UI
+  prototype called LogicLive last week — it works, here's the GitHub
+  link. But after building it I realised I'd solved a framework
+  problem with AI glued on, not an AI problem. So I started over with
+  the harder question."  ← that's an authenticity move that scores
+  Self-Awareness points.

@@ -33,6 +33,15 @@ const WIDGET_BADGE = {
   fontFamily: 'ui-monospace, monospace',
   color: '#888',
 }
+const MODE_SELECT = {
+  fontSize: 11,
+  fontFamily: 'system-ui, sans-serif',
+  padding: '2px 6px',
+  border: '1px solid #d0d7de',
+  borderRadius: 4,
+  background: '#fff',
+  cursor: 'pointer',
+}
 const TRANSCRIPT = {
   flex: 1,
   overflowY: 'auto',
@@ -78,6 +87,16 @@ const PROPOSED_HEADER = {
   justifyContent: 'space-between',
   alignItems: 'center',
 }
+const COPY_INLINE_BTN = {
+  border: '1px solid #d0d7de',
+  background: '#fff',
+  color: '#555',
+  cursor: 'pointer',
+  fontSize: 10,
+  fontFamily: 'inherit',
+  padding: '1px 6px',
+  borderRadius: 3,
+}
 const CODE_BLOCK = {
   margin: 0,
   padding: 10,
@@ -100,6 +119,11 @@ const APPLY_BTN = {
   fontSize: 12,
   fontFamily: 'system-ui, sans-serif',
   cursor: 'pointer',
+}
+const APPLY_SUGG_BTN = {
+  ...APPLY_BTN,
+  border: '1px solid #8957e5',
+  background: '#8957e5',
 }
 const ERR = { padding: '6px 10px', color: 'crimson', fontSize: 12 }
 const INPUT_ROW = {
@@ -132,13 +156,20 @@ const SEND_BTN = {
 // ─── SSE-over-POST helper ──────────────────────────────────────────
 
 function parseSSEFrame(frame) {
-  const lines = frame.split('\n')
+  // Lenient: handles `event: foo`, `event:foo`, CRLF line endings, and
+  // multi-line data per the SSE spec (multiple `data:` lines joined with \n).
+  const lines = frame.split(/\r?\n/)
   let event = 'message'
-  let data = ''
+  const dataParts = []
   for (const line of lines) {
-    if (line.startsWith('event: ')) event = line.slice(7).trim()
-    else if (line.startsWith('data: ')) data += line.slice(6)
+    if (line.startsWith('event:')) {
+      event = line.slice(6).trimStart().trimEnd()
+    } else if (line.startsWith('data:')) {
+      const chunk = line.slice(5)
+      dataParts.push(chunk.startsWith(' ') ? chunk.slice(1) : chunk)
+    }
   }
+  const data = dataParts.join('\n')
   if (!data) return null
   try {
     return { event, data: JSON.parse(data) }
@@ -164,14 +195,16 @@ async function streamSSEPost(url, body, onEvent) {
     const { value, done } = await reader.read()
     if (done) break
     buf += decoder.decode(value, { stream: true })
-    const frames = buf.split('\n\n')
+    // [L039] SSE frame separator MUST be /\r?\n\r?\n/ to handle CRLF streams
+    // from Anthropic. Literal '\n\n'.split silently fails because the two
+    // \n chars in '\r\n\r\n' are not consecutive.
+    const frames = buf.split(/\r?\n\r?\n/)
     buf = frames.pop() || ''
     for (const frame of frames) {
       const ev = parseSSEFrame(frame)
       if (ev) onEvent(ev)
     }
   }
-  // Flush any trailing frame
   if (buf.trim()) {
     const ev = parseSSEFrame(buf)
     if (ev) onEvent(ev)
@@ -180,66 +213,196 @@ async function streamSSEPost(url, body, onEvent) {
 
 // ─── component ─────────────────────────────────────────────────────
 
-export function ChatPanel({ screenId, widgetId }) {
+const MODE_HINTS = {
+  generate: 'e.g. "fetch sales from the orders table grouped by product"',
+  explain: 'e.g. "explain what this widget does"',
+  review: 'e.g. "review for bugs and edge cases"',
+  optimize: 'e.g. "suggest performance improvements"',
+}
+
+// SSE through Vite's dev proxy buffers the response, so the stream never
+// arrives at the browser. Hit the FastAPI backend directly for the
+// streaming endpoint only. CORSMiddleware in app.py allows :5173 origin.
+// Non-streaming calls (/api/save, /api/logic) keep using the proxy.
+const SSE_BACKEND_BASE =
+  import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000'
+
+// Small inline copy-to-clipboard control. Used in the proposed-code
+// block header so the user can grab the generated code without
+// click-drag-select.
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text || '')
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch (_) {
+      /* clipboard API may fail in non-secure contexts; ignore */
+    }
+  }
+  return (
+    <button style={COPY_INLINE_BTN} onClick={handleCopy} title="Copy to clipboard">
+      {copied ? '✓ Copied' : '⧉ Copy'}
+    </button>
+  )
+}
+
+// localStorage key per (screen_id, widget_id) — per-widget multi-turn
+// history. Source of truth for the WIDGET'S CODE is still logic_code in
+// the DB; this is just the conversation log that produced it.
+const HISTORY_KEY = (screenId, widgetId) =>
+  `logiclive_chat:${screenId || '_'}:${widgetId || '_'}`
+const MAX_HISTORY_SENT = 10 // turns sent to backend; clipped to keep prompt bounded
+
+export function ChatPanel({ screenId, widgetId, prefill = '' }) {
   const [prompt, setPrompt] = useState('')
-  const [proposed, setProposed] = useState('')
-  const [phase, setPhase] = useState('idle') // idle | streaming | done | applying | applied | error
+  // history: [{role: 'user'|'assistant', content, mode?, applied?}]
+  // Multi-turn — survives widget switch + page refresh via localStorage.
+  const [history, setHistory] = useState([])
+  const [phase, setPhase] = useState('idle') // idle | streaming | applying | error
   const [errMsg, setErrMsg] = useState(null)
-  const [transcript, setTranscript] = useState([]) // [{role, text}]
+  const [mode, setMode] = useState('generate') // generate | explain | review | optimize
+  const [streamingIdx, setStreamingIdx] = useState(null)
   const scrollRef = useRef(null)
 
-  // Reset everything when widget changes
+  // Load history for this widget from localStorage when widget changes.
+  // ORDER MATTERS: this must run BEFORE the prefill effect so its
+  // setPrompt('') doesn't wipe the prefill on first mount. React fires
+  // effects in source order; the later setPrompt call wins.
   useEffect(() => {
     setPrompt('')
-    setProposed('')
     setPhase('idle')
     setErrMsg(null)
-    setTranscript([])
+    setStreamingIdx(null)
+    if (!widgetId) {
+      setHistory([])
+      return
+    }
+    try {
+      const saved = localStorage.getItem(HISTORY_KEY(screenId, widgetId))
+      setHistory(saved ? JSON.parse(saved) : [])
+    } catch (_) {
+      setHistory([])
+    }
   }, [screenId, widgetId])
 
-  // Auto-scroll transcript on update
+  // One-shot prefill from /plan's BuildButton (?prefill=...). Drop it
+  // into the prompt input on first render only. Runs AFTER the widget-
+  // change effect so its setPrompt(prefill) overrides the clear above.
+  useEffect(() => {
+    if (prefill) setPrompt(prefill)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Persist whenever history changes (best-effort).
+  useEffect(() => {
+    if (!widgetId) return
+    try {
+      localStorage.setItem(
+        HISTORY_KEY(screenId, widgetId),
+        JSON.stringify(history),
+      )
+    } catch (_) {
+      /* quota errors etc — ignore */
+    }
+  }, [screenId, widgetId, history])
+
+  // Auto-scroll on update
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-  }, [transcript, proposed, phase])
+  }, [history, phase])
 
-  const send = async () => {
-    const userPrompt = prompt.trim()
+  const send = async (overridePrompt = null, overrideMode = null) => {
+    // Accepts optional overrides so programmatic flows (e.g. the
+    // "Apply suggestions →" button on a review) can send without
+    // touching the input field or waiting for setState to flush.
+    const userPrompt = (overridePrompt ?? prompt).trim()
+    const useMode = overrideMode ?? mode
     if (!userPrompt || !widgetId) return
-    setPrompt('')
-    setTranscript((prev) => [...prev, { role: 'user', text: userPrompt }])
-    setProposed('')
-    setPhase('streaming')
+    if (overridePrompt == null) setPrompt('')
     setErrMsg(null)
+    setPhase('streaming')
+
+    // Snapshot the history sent to backend BEFORE we append new turn,
+    // clipped to last MAX_HISTORY_SENT entries. mode is included so
+    // labels in CONVERSATION SO FAR are unambiguous (see [L040]).
+    const historyForBackend = history.slice(-MAX_HISTORY_SENT).map((m) => ({
+      role: m.role,
+      content: m.content,
+      mode: m.mode,
+    }))
+
+    // Append user message + placeholder assistant message we'll fill as
+    // tokens arrive. assistantIdx is where streamed text lands.
+    let assistantIdx
+    setHistory((prev) => {
+      const userTurn = { role: 'user', content: userPrompt, mode: useMode }
+      const assistantTurn = { role: 'assistant', content: '', mode: useMode }
+      assistantIdx = prev.length + 1
+      setStreamingIdx(assistantIdx)
+      return [...prev, userTurn, assistantTurn]
+    })
 
     try {
       await streamSSEPost(
-        '/api/ai/generate',
-        { screen_id: screenId, widget_id: widgetId, prompt: userPrompt },
+        `${SSE_BACKEND_BASE}/ai/generate`,
+        {
+          screen_id: screenId,
+          widget_id: widgetId,
+          prompt: userPrompt,
+          mode: useMode,
+          history: historyForBackend,
+        },
         (ev) => {
-          if (ev.event === 'token') {
-            if (ev.data && ev.data.retry) {
-              // [C019] retry started — discard the bad first attempt
-              setProposed(ev.data.text || '')
+          const d = ev.data || {}
+          if (ev.event === 'token' || (ev.event === 'message' && d.text !== undefined)) {
+            const addText = d.text || ''
+            if (d.retry) {
+              // [C019] retry — replace the placeholder content
+              setHistory((prev) => {
+                const copy = [...prev]
+                if (copy[assistantIdx]) copy[assistantIdx] = { ...copy[assistantIdx], content: addText }
+                return copy
+              })
             } else {
-              setProposed((p) => p + (ev.data?.text || ''))
+              setHistory((prev) => {
+                const copy = [...prev]
+                if (copy[assistantIdx]) {
+                  copy[assistantIdx] = { ...copy[assistantIdx], content: (copy[assistantIdx].content || '') + addText }
+                }
+                return copy
+              })
             }
-          } else if (ev.event === 'done') {
-            setProposed(ev.data?.full_text || '')
-            setPhase('done')
-          } else if (ev.event === 'error') {
-            setErrMsg(ev.data?.message || 'AI error')
+          } else if (ev.event === 'done' || (ev.event === 'message' && d.full_text !== undefined)) {
+            // Done — replace with the canonical full_text just in case
+            // we missed any tokens (rare, but possible).
+            if (d.full_text) {
+              setHistory((prev) => {
+                const copy = [...prev]
+                if (copy[assistantIdx]) copy[assistantIdx] = { ...copy[assistantIdx], content: d.full_text }
+                return copy
+              })
+            }
+            setPhase('idle')
+            setStreamingIdx(null)
+          } else if (ev.event === 'error' || (ev.event === 'message' && d.message !== undefined)) {
+            setErrMsg(d.message || 'AI error')
             setPhase('error')
+            setStreamingIdx(null)
           }
         },
       )
     } catch (e) {
       setErrMsg(String(e.message || e))
       setPhase('error')
+      setStreamingIdx(null)
     }
   }
 
-  const apply = async () => {
-    if (!proposed || !widgetId) return
+  const apply = async (idx) => {
+    const msg = history[idx]
+    if (!msg || msg.role !== 'assistant' || !msg.content || !widgetId) return
     setPhase('applying')
     setErrMsg(null)
     try {
@@ -249,21 +412,56 @@ export function ChatPanel({ screenId, widgetId }) {
         body: JSON.stringify({
           screen_id: screenId,
           widget_id: widgetId,
-          logic_code: proposed,
+          logic_code: msg.content,
         }),
       })
       if (!r.ok) {
         const body = await r.json().catch(() => ({}))
         throw new Error(body.detail || `HTTP ${r.status}`)
       }
-      setPhase('applied')
-      setTranscript((prev) => [...prev, { role: 'system', text: 'Applied ✓ — preview will refresh' }])
-      // After a beat, allow another round
-      setTimeout(() => setProposed(''), 600)
+      // Mark applied on the message + add a small system note
+      setHistory((prev) => {
+        const copy = [...prev]
+        if (copy[idx]) copy[idx] = { ...copy[idx], applied: true }
+        return [...copy, { role: 'system', content: 'Applied ✓ — preview will refresh' }]
+      })
+      setPhase('idle')
     } catch (e) {
       setErrMsg(String(e.message || e))
       setPhase('error')
     }
+  }
+
+  // Trigger a follow-up generate turn that asks the AI to rewrite the
+  // code addressing every bullet from a prior review/optimize message.
+  // The full history is already sent to the backend, so the AI sees
+  // the bullets as part of CONVERSATION SO FAR.
+  const applySuggestions = (idx) => {
+    const m = history[idx]
+    if (!m || m.role !== 'assistant') return
+    const noun =
+      m.mode === 'review'
+        ? 'review'
+        : m.mode === 'optimize'
+        ? 'optimization suggestions'
+        : 'suggestions'
+    const promptText =
+      `Rewrite the prior render(params) function addressing every bullet from your ${noun} above. ` +
+      `Respect the SANDBOX RULES — no import statements (sqlite3, json, math, datetime, statistics are pre-injected; ` +
+      `use datetime.datetime.* forms). Output ONLY the corrected Python function.`
+    setMode('generate')
+    send(promptText, 'generate')
+  }
+
+  const clearHistory = () => {
+    if (!widgetId) return
+    if (!confirm('Clear chat history for this widget?')) return
+    setHistory([])
+    setPrompt('')
+    setErrMsg(null)
+    try {
+      localStorage.removeItem(HISTORY_KEY(screenId, widgetId))
+    } catch (_) {}
   }
 
   if (!widgetId) {
@@ -274,12 +472,7 @@ export function ChatPanel({ screenId, widgetId }) {
     )
   }
 
-  let phaseLabel = ''
-  if (phase === 'streaming') phaseLabel = '⏳ streaming…'
-  else if (phase === 'done') phaseLabel = '✨ proposed'
-  else if (phase === 'applying') phaseLabel = '💾 applying…'
-  else if (phase === 'applied') phaseLabel = '✅ applied'
-  else if (phase === 'error') phaseLabel = '⚠ error'
+  const isBusy = phase === 'streaming' || phase === 'applying'
 
   return (
     <div style={COL}>
@@ -287,44 +480,126 @@ export function ChatPanel({ screenId, widgetId }) {
         <span className="editor-section-label" style={{ margin: 0 }}>
           AI Chat
         </span>
-        <span style={WIDGET_BADGE}>{widgetId}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <select
+            style={MODE_SELECT}
+            value={mode}
+            onChange={(e) => setMode(e.target.value)}
+            disabled={isBusy}
+            title="Mode determines whether the AI writes code or prose"
+          >
+            <option value="generate">Generate (code)</option>
+            <option value="explain">Explain</option>
+            <option value="review">Review</option>
+            <option value="optimize">Optimize</option>
+          </select>
+          {history.length > 0 && (
+            <button
+              onClick={clearHistory}
+              disabled={isBusy}
+              title="Clear chat history for this widget"
+              style={{
+                fontSize: 11,
+                padding: '2px 6px',
+                border: '1px solid #d0d7de',
+                borderRadius: 3,
+                background: '#fff',
+                color: '#666',
+                cursor: 'pointer',
+              }}
+            >
+              clear
+            </button>
+          )}
+          <span style={WIDGET_BADGE}>{widgetId}</span>
+        </div>
       </div>
 
       <div ref={scrollRef} style={TRANSCRIPT}>
-        {transcript.length === 0 && !proposed && (
+        {history.length === 0 && (
           <div style={EMPTY_HINT}>
-            Ask the AI to write or modify this widget's logic.
+            {mode === 'generate'
+              ? "Ask the AI to write or modify this widget's logic."
+              : mode === 'explain'
+              ? 'Ask the AI to explain what this widget does.'
+              : mode === 'review'
+              ? 'Ask the AI to review the widget for issues.'
+              : 'Ask the AI to suggest improvements to this widget.'}
             <br />
-            <em>
-              e.g. "fetch sales from the orders table grouped by product"
-            </em>
+            <em>{MODE_HINTS[mode]}</em>
           </div>
         )}
 
-        {transcript.map((t, i) => (
-          <div key={i} style={t.role === 'user' ? MSG_USER : MSG_SYS}>
-            {t.role === 'user' ? '› ' : ''}
-            {t.text}
-          </div>
-        ))}
-
-        {proposed && (
-          <div style={PROPOSED_BLOCK}>
-            <div style={PROPOSED_HEADER}>
-              <span>{phaseLabel}</span>
-              <span style={{ fontSize: 10, color: '#888' }}>
-                {proposed.length} chars
-              </span>
+        {history.map((m, i) => {
+          if (m.role === 'system') {
+            return <div key={i} style={MSG_SYS}>{m.content}</div>
+          }
+          if (m.role === 'user') {
+            return (
+              <div key={i} style={MSG_USER}>
+                {m.mode && m.mode !== 'generate' && (
+                  <span style={{ fontSize: 10, color: '#888', marginRight: 6 }}>
+                    [{m.mode}]
+                  </span>
+                )}
+                › {m.content}
+              </div>
+            )
+          }
+          // assistant
+          const turnMode = m.mode || 'generate'
+          const isStreamingThis = i === streamingIdx
+          const showApply = turnMode === 'generate' && m.content && !m.applied && !isStreamingThis
+          const showApplySuggestions =
+            (turnMode === 'review' || turnMode === 'optimize') &&
+            m.content &&
+            !isStreamingThis &&
+            !isBusy
+          return (
+            <div key={i} style={PROPOSED_BLOCK}>
+              <div style={PROPOSED_HEADER}>
+                <span>
+                  {isStreamingThis ? '⏳ streaming…' : m.applied ? '✅ applied' : '✨ proposed'}
+                  {turnMode !== 'generate' && (
+                    <span style={{ marginLeft: 6, color: '#888' }}>({turnMode})</span>
+                  )}
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 10, color: '#888' }}>
+                    {(m.content || '').length} chars
+                  </span>
+                  {m.content && !isStreamingThis && (
+                    <CopyButton text={m.content} />
+                  )}
+                </span>
+              </div>
+              <pre style={CODE_BLOCK}>{m.content || '…thinking'}</pre>
+              {showApply && (
+                <button style={APPLY_BTN} onClick={() => apply(i)}>
+                  Apply →
+                </button>
+              )}
+              {showApplySuggestions && (
+                <button
+                  style={APPLY_SUGG_BTN}
+                  onClick={() => applySuggestions(i)}
+                  title="Ask the AI to rewrite the code addressing every bullet above"
+                >
+                  Apply suggestions →
+                </button>
+              )}
             </div>
-            <pre style={CODE_BLOCK}>{proposed}</pre>
-            {phase === 'done' && (
-              <button style={APPLY_BTN} onClick={apply}>
-                Apply →
-              </button>
-            )}
-            {errMsg && <div style={ERR}>{errMsg}</div>}
-          </div>
+          )
+        })}
+
+        {/* Streaming indicator when no tokens have arrived yet for current turn */}
+        {phase === 'streaming' && streamingIdx !== null && !history[streamingIdx]?.content && (
+          <div style={{ ...MSG_SYS, color: '#888' }}>⏳ waiting for first token…</div>
         )}
+        {phase === 'applying' && (
+          <div style={{ ...MSG_SYS, color: '#888' }}>💾 applying…</div>
+        )}
+        {errMsg && <div style={ERR}>{errMsg}</div>}
       </div>
 
       <div style={INPUT_ROW}>
@@ -339,14 +614,12 @@ export function ChatPanel({ screenId, widgetId }) {
             }
           }}
           placeholder="ask the AI…"
-          disabled={phase === 'streaming' || phase === 'applying'}
+          disabled={isBusy}
         />
         <button
           style={SEND_BTN}
           onClick={send}
-          disabled={
-            !prompt.trim() || phase === 'streaming' || phase === 'applying'
-          }
+          disabled={!prompt.trim() || isBusy}
         >
           {phase === 'streaming' ? '…' : 'Send'}
         </button>

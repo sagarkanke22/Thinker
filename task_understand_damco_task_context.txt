@@ -1390,6 +1390,233 @@ Sagar Kanake
 +91 9284898350 · sagarkanke33@gmail.com
 
 ═══════════════════════════════════════════════════════
+STEP 24 | 2026-05-30 | DONE — real `orders` DB table
+═══════════════════════════════════════════════════════
+WHAT:
+  - logiclive/db.py: imported Integer; added Order ORM model
+    (id PK, date indexed, product indexed, qty, revenue)
+  - examples/orders_seed.py (NEW): 30 realistic May 2026 sales rows
+    across 5 products. Idempotent (wipes orders then inserts).
+  - examples/sales_report.yaml: rewrote 3 widget logic blocks
+    (text.total_kpi, table.results, chart.revenue) to query the
+    orders table via the sandbox-pre-injected sqlite3 module instead
+    of embedded constant lists. Each is a parameterised SQL query
+    using start_date/end_date params.
+
+VALIDATION:
+  - orders_seed.py inserted 30 rows
+  - sales_report seed re-applied with new YAML
+  - /render text.total_kpi (full month) → Revenue: 18,600
+  - /render table.results (default) → 5 products / 30 orders;
+    Coke 500ml leader at rev=7950 with _style green
+  - /render table.results (May 1-5 narrow) → 4 products / 6 orders;
+    Coke leader at rev=2200 — proves SQL date filter works
+  - /render chart.revenue → Plotly bar with 5 bars + dynamic title
+  - pytest tests/ -q → 57 passed (no regression after [L022] fix)
+
+CITATIONS: [C007] sqlite3 in sandbox allowlist verified; [C014] vocab
+           unchanged; [C017] /render envelope shape identical;
+           [C019] every logic_code still ends with explicit return;
+           [R007] blocked once (then fixed); [L022] debug entries below.
+
+── DEBUG ENTRY #1 ────────────────────────────────────
+ERROR CLASS  : Runtime (sandbox)
+ERROR        : ImportError: __import__ not found
+              (widget logic tried `import sqlite3` inside render())
+ROOT CAUSE   : Sandbox runner in logiclive/sandbox.py removes
+              `__import__` from __builtins__ but pre-injects
+              sqlite3, json, math, datetime, statistics into
+              globals_dict. User code must USE them directly,
+              not import.
+FIX APPLIED  : Removed `import sqlite3` lines from all 3 widget
+              logic blocks in sales_report.yaml. Replaced with a
+              comment explaining sqlite3 is pre-injected.
+CHECKLIST    : Should have grepped sandbox.py before writing
+              logic; would have seen the allowlist comment.
+LESSON       : LogicLive widget logic_code does NOT need or
+              support `import` statements — the sandbox provides
+              sqlite3/json/math/datetime/statistics as globals.
+              Document this in widget authoring guide.
+LESSON TAG   : L039 candidate — sandbox-imports-are-globals
+── END ENTRY #1 ──────────────────────────────────────
+
+── DEBUG ENTRY #2 ────────────────────────────────────
+ERROR CLASS  : Test fixture collision (Schema)
+ERROR        : tests/test_ai.py errored on 9 tests — its fixture
+              raw-CREATEs an `orders` table with a different
+              schema than the new Order ORM model
+ROOT CAUSE   : Base.metadata.create_all (called by db_session
+              fixture) now creates `orders` from the new Order
+              model. The fixture then tries `CREATE TABLE orders
+              (...)` with different columns → "table orders
+              already exists" or schema mismatch.
+FIX APPLIED  : Renamed the test fixture's user table from `orders`
+              to `test_sales` in tests/test_ai.py. Updated 3
+              assertions that referenced "orders" → "test_sales".
+              No semantic change to test intent.
+CHECKLIST    : Adding a new ORM model can collide with test
+              fixtures that use raw SQL CREATE TABLE for sample
+              user tables. Should run pytest pre-commit when
+              adding models.
+LESSON       : When adding new ORM models, run pytest immediately
+              — Base.metadata.create_all is global across tests.
+              Test fixtures using raw CREATE TABLE should avoid
+              names that might collide with future ORM models.
+LESSON TAG   : L040 candidate — orm-model-vs-test-fixture-collision
+── END ENTRY #2 ──────────────────────────────────────
+
+═══════════════════════════════════════════════════════
+STEP 26 | 2026-05-30 | DONE — /test endpoint + UI button
+═══════════════════════════════════════════════════════
+WHAT (out-of-order: done before Step 25 while waiting on Ollama):
+  - logiclive/sandbox.py:
+      * Runner now wraps output: {"_result": ..., "_stdout": ...}
+      * exec_logic gains capture_stdout=False default — returns the
+        unwrapped result like before (back-compat with /render, /action)
+      * When capture_stdout=True, returns {"result", "stdout", "stderr"}
+        envelope. /test uses this.
+  - logiclive/app.py:
+      * TestRequest BaseModel (logic_code, params; both Optional[None])
+      * POST /test: [C021]/[L026] truthy guard on logic_code, calls
+        exec_logic(capture_stdout=True), returns {ok, result, stdout, stderr}
+      * No DB read — purely transient (doesn't touch widgets table)
+  - frontend/src/editor/CodeEditor.jsx:
+      * Test button (green) next to Save button in header
+      * runTest() POSTs to /api/test with current code + {} params
+      * testOut state holds {ok, result, stdout, stderr}
+      * Output panel below Monaco: collapsible (× button), shows
+        result JSON pretty-printed + stdout in gray + stderr in red
+      * Clears on widget change
+  - tests/test_render.py:
+      * test_test_missing_logic_code_returns_400
+      * test_test_happy_path_returns_result_and_stdout
+        (verifies BOTH print() lines captured)
+      * test_test_runtime_error_returns_ok_false
+      * test_test_does_not_persist_to_db (proves transience)
+
+VALIDATION:
+  - pytest tests/ -q → 61 passed (was 57, +4 new)
+  - /test happy path: stdout shows side-effect prints + params dict
+  - /test error: ZeroDivisionError surfaced cleanly in result.error
+  - /test guard: 400 on missing logic_code
+  - /render backward compat: still returns unwrapped envelope
+  - Vite serves CodeEditor.jsx with new wiring
+
+CITATIONS: [C016] fresh sandbox per /test call; [C017] /test envelope
+           distinct from /render's by design; [C020] sandbox safety
+           preserved (just added stdout return path); [C021]+[L026]
+           explicit guard; [R008] minimal — back-compat default.
+
+WHY IT MATTERS FOR DAMCO PITCH:
+  This directly addresses JD responsibility #3 — "Review and harden
+  AI-generated code." Demo: paste AI-suggested code into Monaco, click
+  Test, see what it actually returns + any debug prints — BEFORE
+  saving. The dev is the quality gate, not the LLM. Strong visual
+  moment for the video.
+
+═══════════════════════════════════════════════════════
+STEP 27 | 2026-05-30 | DONE — Test panel improvements (logs at test time)
+═══════════════════════════════════════════════════════
+WHAT (scoped down from initial proposal — user said test-time-only,
+not a full /api/logs ring buffer):
+  - logiclive/app.py: /test now also returns duration_ms (wall-clock
+    sandbox timing via time.perf_counter)
+  - frontend/src/editor/CodeEditor.jsx:
+      * Header now shows duration: "Test ✓ ok · 51ms"
+      * stdout section is ALWAYS shown (was conditional). When empty,
+        shows italic gray "(no print output — add print(...) to your
+        widget logic to see traces here)" so the dev knows the code
+        was silent vs. broken.
+      * Section label includes "(server-side print output from sandbox)"
+        for clarity.
+      * stderr still conditional (red panel only when present).
+  - examples/sales_report.yaml: added informative print() lines to the
+    3 SQL widget logic blocks:
+      * text.total_kpi:  prints query window + total
+      * table.results:   prints window + product count + leader
+      * chart.revenue:   prints window + bar count
+    These are visible whenever the dev tests OR live preview renders
+    (visible in uvicorn stdout) — gives a concrete trace of what the
+    sandbox is doing per request.
+
+VALIDATION:
+  - re-seeded successfully (5 widgets)
+  - /test on table.results returns: ok=true, duration_ms=51,
+    stdout containing exactly 3 expected print lines:
+      [table.results] window: 2026-05-01..2026-05-15
+      [table.results] 5 products, 17 orders
+      [table.results] leader: Coke 500ml (rev=4000)
+  - pytest tests/ -q → 61 passed (no regression — /test contract added
+    a field, didn't change existing ones)
+
+CITATIONS: [C016] fresh sandbox; [C017] /test response shape extended
+           (additive, not breaking); [R008] minimal — declined initial
+           proposal for a full ring buffer + tabbed Logs panel in favor
+           of just enhancing the existing Test panel per user scope.
+
+DESIGN DECISION rejected: initial Step 27 proposal was a full /api/logs
+  ring buffer + tabbed ChatPanel with Live Logs view. User scoped it
+  down to: "only at test time". So we kept the existing Test panel and
+  enhanced what's there. Smaller surface, less moving parts, still
+  meets the actual need. Original ring-buffer idea preserved as a v2
+  candidate in task_multiagent_dev_studio_context.txt (deferred).
+
+═══════════════════════════════════════════════════════
+STEP 28 | 2026-05-30 | DONE — pluggable LLM provider (Anthropic + Ollama)
+═══════════════════════════════════════════════════════
+WHAT:
+  - .env: switched ANTHROPIC_MODEL to claude-sonnet-4-6 (current Sonnet),
+    LLM_PROVIDER=anthropic
+  - logiclive/ai.py:
+      * Imported anthropic SDK
+      * New env vars: LLM_PROVIDER, ANTHROPIC_API_KEY, ANTHROPIC_MODEL
+      * Lazy _get_anthropic_client() — defers API key check until first call
+      * call_anthropic / stream_anthropic — async client.messages.{create,stream}
+      * call_llm / stream_llm — DISPATCHER picking provider from
+        LLM_PROVIDER env (default ollama for back-compat)
+      * generate_logic now uses call_llm (was call_ollama)
+  - logiclive/app.py:
+      * Import: stream_ollama → stream_llm
+      * /ai/generate uses stream_llm (transparent — same SSE contract)
+  - tests/test_render.py:
+      * monkeypatch path: "logiclive.app.stream_ollama" → ".stream_llm"
+
+VALIDATION (real Anthropic call, not mocked):
+  - pytest tests/ -q → 61 passed (no regression; rename was the only change
+    other tests needed)
+  - curl /ai/generate with prompt "only show top 3 products" against
+    table.results widget → real streaming SSE response from Claude Sonnet 4.6
+  - Model returned a complete render(params) function that:
+      * added `LIMIT 3` to the existing SQL
+      * preserved the diagnostic print() lines
+      * preserved the leader-row green _style
+      * updated the footer to say "Top N products"
+      * still returns a valid dict matching /render envelope
+    → high-quality codegen, demonstrates [C018] prompt context was effective
+
+CITATIONS:
+  [C017] /ai/generate response shape unchanged (token/done/error events);
+  [C018] all 5 prompt ingredients still threaded; Claude clearly used the
+         prior_logic context (kept the print pattern + green leader);
+  [C019] response ends with explicit return — no retry needed;
+  [R007] would have BLOCKED if pytest regression hit;
+  [R008] minimal — pluggable abstraction via env var, ~70 lines.
+
+WHY IT MATTERS FOR DAMCO:
+  - JD explicitly says "Use Claude Code and Cursor" — integrating Anthropic
+    API directly demonstrates fluency with the tool they hire for
+  - Pluggable design = engineering signal (not "I picked the easy provider")
+  - Video pitch: "AgentStudio is provider-agnostic. Default local for
+    privacy. Switch to Anthropic via env var for higher quality. Same
+    /ai/generate endpoint, same [C018] prompt assembly, same SSE
+    contract — just a different transport."
+
+SIDE NOTE:
+  User pasted real API key in chat earlier; was advised to revoke + rotate.
+  Whether they rotated is on them — proceeded with the key they put in .env
+  per their explicit instruction.
+
+═══════════════════════════════════════════════════════
 EXTERNAL CHECKLIST — YOU MUST DO THESE
 ═══════════════════════════════════════════════════════
 [ ] 1. Run the demo end-to-end yourself. Confirm:
