@@ -95,23 +95,81 @@ export default function AppRenderer() {
     )
   }
 
+  const inputWidgets = widgets.filter((w) => w.type === 'input' || w.type === 'button')
+  const contentWidgets = widgets.filter((w) => w.type !== 'input' && w.type !== 'button')
+
+  function WidgetCard({ w }) {
+    const Component = getWidgetComponent(w.type)
+    const cfg = renders[w.widget_id] || { loading: true, type: w.type }
+    return (
+      <div style={{
+        background: '#fff',
+        border: '1px solid #e1e4e8',
+        borderRadius: 10,
+        boxShadow: '0 1px 6px rgba(0,0,0,0.06)',
+        padding: '18px 20px',
+        minWidth: 0,
+      }}>
+        <Component
+          widgetId={w.widget_id}
+          type={w.type}
+          config={cfg}
+          screenId={screenId}
+          onChange={onParamChange}
+        />
+      </div>
+    )
+  }
+
   return (
-    <div style={{ padding: 16, fontFamily: 'system-ui, sans-serif' }}>
-      <h1 style={{ fontSize: 18, margin: '4px 0 12px' }}>{screenId}</h1>
-      {widgets.map((w) => {
-        const Component = getWidgetComponent(w.type)
-        const cfg = renders[w.widget_id] || { loading: true, type: w.type }
-        return (
-          <Component
-            key={w.widget_id}
-            widgetId={w.widget_id}
-            type={w.type}
-            config={cfg}
-            screenId={screenId}
-            onChange={onParamChange}
-          />
-        )
-      })}
+    <div style={{
+      minHeight: '100vh',
+      background: '#f4f5f7',
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+    }}>
+      {/* Page header */}
+      <div style={{
+        background: '#fff',
+        borderBottom: '1px solid #e1e4e8',
+        padding: '14px 28px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+      }}>
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+          letterSpacing: 1, color: '#8b949e' }}>Report</span>
+        <span style={{ color: '#d0d7de', fontSize: 14 }}>›</span>
+        <span style={{ fontSize: 15, fontWeight: 700, color: '#1f2328', letterSpacing: 0.2 }}>
+          {screenId.replace(/_/g, ' ')}
+        </span>
+      </div>
+
+      {/* Controls row — input + button widgets */}
+      {inputWidgets.length > 0 && (
+        <div style={{
+          display: 'flex',
+          gap: 12,
+          alignItems: 'center',
+          padding: '14px 28px 0',
+          flexWrap: 'wrap',
+        }}>
+          {inputWidgets.map((w) => (
+            <WidgetCard key={w.widget_id} w={w} />
+          ))}
+        </div>
+      )}
+
+      {/* Main content — charts, tables, text */}
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16,
+        padding: 28,
+      }}>
+        {contentWidgets.map((w) => (
+          <WidgetCard key={w.widget_id} w={w} />
+        ))}
+      </div>
     </div>
   )
 }

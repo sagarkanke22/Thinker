@@ -14,6 +14,7 @@
 // [L039]); list/load/save are plain JSON through the proxy (works fine).
 
 import { useEffect, useRef, useState } from 'react'
+import '../styles/editor.css'
 
 const SSE_BACKEND_BASE =
   import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000'
@@ -27,44 +28,46 @@ const PAGE = {
   display: 'flex',
   height: '100%',
   fontFamily: 'system-ui, -apple-system, sans-serif',
-  background: '#fafbfc',
+  background: '#0d1117',
 }
 const SIDEBAR = {
   width: 240,
-  borderRight: '1px solid #d0d7de',
-  background: '#f6f8fa',
+  borderRight: '1px solid #21262d',
+  background: '#161b22',
   display: 'flex',
   flexDirection: 'column',
   flexShrink: 0,
 }
 const SIDEBAR_HEADER = {
-  padding: 10,
-  borderBottom: '1px solid #d0d7de',
+  padding: '12px 10px',
+  borderBottom: '1px solid #21262d',
 }
 const NEW_BTN = {
   width: '100%',
-  padding: '8px 10px',
-  border: '1px solid #2da44e',
-  borderRadius: 6,
-  background: '#2da44e',
+  padding: '9px 10px',
+  border: 'none',
+  borderRadius: 8,
+  background: 'linear-gradient(135deg, #238636 0%, #2ea043 100%)',
   color: '#fff',
   fontSize: 13,
   cursor: 'pointer',
-  fontWeight: 500,
+  fontWeight: 600,
+  letterSpacing: 0.3,
+  boxShadow: '0 0 0 1px rgba(46,160,67,0.4), 0 2px 8px rgba(46,160,67,0.2)',
 }
 const SIDEBAR_LIST = { flex: 1, overflowY: 'auto', padding: 6 }
 const CONV_ROW = {
   display: 'flex',
   alignItems: 'center',
   gap: 6,
-  padding: '6px 8px',
+  padding: '7px 10px',
   margin: '2px 0',
-  borderRadius: 4,
+  borderRadius: 6,
   cursor: 'pointer',
   fontSize: 12,
-  color: '#333',
+  color: '#8b949e',
 }
-const CONV_ROW_ACTIVE = { background: '#dbedff' }
+const CONV_ROW_ACTIVE = { background: '#1f2d3d', color: '#58a6ff' }
 const CONV_TITLE = {
   flex: 1,
   overflow: 'hidden',
@@ -74,14 +77,14 @@ const CONV_TITLE = {
 const CONV_DELETE = {
   border: 'none',
   background: 'transparent',
-  color: '#888',
+  color: '#484f58',
   cursor: 'pointer',
   fontSize: 14,
   padding: '0 4px',
   visibility: 'hidden',
 }
 const CONV_EMPTY = {
-  color: '#888',
+  color: '#484f58',
   fontStyle: 'italic',
   fontSize: 12,
   padding: 10,
@@ -92,6 +95,7 @@ const MAIN = {
   display: 'flex',
   flexDirection: 'column',
   minWidth: 0,
+  background: '#0d1117',
 }
 
 // ─── Steps side-panel styles (right column) ───────────────────────
@@ -99,51 +103,52 @@ const MAIN = {
 const STEPS_PANEL = {
   width: 360,
   flexShrink: 0,
-  borderLeft: '1px solid #d0d7de',
-  background: '#f6f8fa',
+  borderLeft: '1px solid #21262d',
+  background: '#161b22',
   overflowY: 'auto',
   padding: 16,
   boxSizing: 'border-box',
 }
 const STEPS_TITLE = {
-  fontSize: 14,
-  fontWeight: 600,
-  color: '#1f2328',
+  fontSize: 10,
+  fontWeight: 700,
+  color: '#6e7681',
   marginBottom: 14,
-  paddingBottom: 8,
-  borderBottom: '1px solid #d0d7de',
-  letterSpacing: 0.2,
+  paddingBottom: 10,
+  borderBottom: '1px solid #21262d',
+  letterSpacing: 1,
+  textTransform: 'uppercase',
 }
 const STEP_CARD = {
-  background: '#fff',
-  border: '1px solid #d0d7de',
+  background: '#21262d',
+  border: '1px solid #30363d',
   borderRadius: 10,
   padding: '12px 14px',
   position: 'relative',
-  boxShadow: '0 1px 0 rgba(27,31,36,0.04)',
+  boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
 }
 const STEP_CARD_EMPTY = {
   ...STEP_CARD,
-  background: '#fafbfc',
+  background: '#161b22',
   borderStyle: 'dashed',
-  borderColor: '#d8dee4',
+  borderColor: '#21262d',
   boxShadow: 'none',
 }
 const STEP_LABEL = {
-  fontSize: 11,
+  fontSize: 10,
   textTransform: 'uppercase',
   letterSpacing: 0.8,
-  color: '#57606a',
+  color: '#6e7681',
   marginBottom: 8,
   fontWeight: 700,
 }
 const STEP_BODY = {
   fontSize: 13,
-  color: '#1f2328',
+  color: '#c9d1d9',
   lineHeight: 1.5,
   wordBreak: 'break-word',
 }
-const STEP_BODY_MUTED = { ...STEP_BODY, color: '#9aa3ad', fontStyle: 'italic' }
+const STEP_BODY_MUTED = { ...STEP_BODY, color: '#484f58', fontStyle: 'italic' }
 // Stacked field layout — label above value, much friendlier in a narrow
 // column than the side-by-side grid (which truncated long SQL).
 const STEP_FIELD = { marginTop: 8 }
@@ -151,13 +156,13 @@ const STEP_FIELD_KEY = {
   fontSize: 10,
   textTransform: 'uppercase',
   letterSpacing: 0.5,
-  color: '#8a94a0',
+  color: '#6e7681',
   fontWeight: 600,
   marginBottom: 2,
 }
 const STEP_FIELD_VAL = {
   fontSize: 12,
-  color: '#1f2328',
+  color: '#c9d1d9',
   fontFamily: 'ui-monospace, SFMono-Regular, monospace',
   overflowWrap: 'anywhere',
   lineHeight: 1.4,
@@ -165,16 +170,16 @@ const STEP_FIELD_VAL = {
 const STEP_ARROW = {
   textAlign: 'center',
   color: '#8957e5',
-  fontSize: 20,
+  fontSize: 18,
   lineHeight: 1,
-  margin: '8px 0',
+  margin: '6px 0',
   fontWeight: 600,
 }
 const STEP_BUILD_CARD = {
   ...STEP_CARD,
-  background: 'linear-gradient(180deg, #f1faf3 0%, #e6f5ea 100%)',
-  borderColor: '#7ec895',
-  boxShadow: '0 2px 6px rgba(46,160,67,0.15)',
+  background: 'linear-gradient(180deg, #0d2316 0%, #0f2f1a 100%)',
+  borderColor: '#2ea043',
+  boxShadow: '0 2px 12px rgba(46,160,67,0.2)',
 }
 const STEP_CODE_PRE = {
   margin: '8px 0 0',
@@ -188,97 +193,116 @@ const STEP_CODE_PRE = {
   maxHeight: 110,
   overflow: 'auto',
   whiteSpace: 'pre',
-  border: '1px solid #1f242c',
+  border: '1px solid #21262d',
 }
 const HEADER = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
   padding: '10px 20px',
-  borderBottom: '1px solid #d0d7de',
-  background: '#fff',
+  borderBottom: '1px solid #21262d',
+  background: '#161b22',
 }
-const TITLE = { fontSize: 16, fontWeight: 600 }
-const NAV_LINK = { fontSize: 12, color: '#0969da', textDecoration: 'none' }
+const TITLE = { fontSize: 14, fontWeight: 700, color: '#c9d1d9', letterSpacing: 0.2 }
+const NAV_LINK = { fontSize: 12, color: '#58a6ff', textDecoration: 'none' }
 const TRANSCRIPT = {
   flex: 1,
   overflowY: 'auto',
-  padding: '16px 20px',
-  maxWidth: 900,
-  margin: '0 auto',
+  padding: '20px 32px',
   width: '100%',
   boxSizing: 'border-box',
 }
 const HINT = {
-  color: '#888',
+  color: '#6e7681',
   fontStyle: 'italic',
   fontSize: 13,
-  lineHeight: 1.6,
-  padding: '8px 0',
+  lineHeight: 1.7,
+  padding: '12px 0',
 }
 const MSG = {
   margin: '12px 0',
-  padding: '10px 14px',
-  borderRadius: 8,
+  padding: '12px 16px',
+  borderRadius: 10,
   fontSize: 14,
-  lineHeight: 1.5,
+  lineHeight: 1.6,
   whiteSpace: 'pre-wrap',
   wordBreak: 'break-word',
+  color: '#c9d1d9',
 }
-const MSG_USER = { ...MSG, background: '#eaf3ff', border: '1px solid #cfe2ff' }
-const MSG_BACKEND = { ...MSG, background: '#fff7e6', border: '1px solid #ffd591' }
-const MSG_FRONTEND = { ...MSG, background: '#f6ffed', border: '1px solid #b7eb8f' }
+const MSG_USER = {
+  ...MSG,
+  background: '#1c2d3d',
+  border: '1px solid #1f3c5a',
+  borderLeft: '3px solid #388bfd',
+}
+const MSG_BACKEND = {
+  ...MSG,
+  background: '#2a1f00',
+  border: '1px solid #3d2e00',
+  borderLeft: '3px solid #e3b341',
+}
+const MSG_FRONTEND = {
+  ...MSG,
+  background: '#0c2011',
+  border: '1px solid #1a3a25',
+  borderLeft: '3px solid #3fb950',
+}
 const MSG_HEADER = {
-  fontSize: 11,
-  fontWeight: 600,
+  fontSize: 10,
+  fontWeight: 700,
   textTransform: 'uppercase',
-  letterSpacing: 0.5,
-  marginBottom: 4,
-  color: '#555',
+  letterSpacing: 0.8,
+  marginBottom: 6,
+  color: '#8b949e',
 }
-const ERR = { color: 'crimson', fontSize: 12, padding: '6px 0' }
+const ERR = { color: '#f85149', fontSize: 12, padding: '6px 0' }
 const INPUT_BAR = {
-  borderTop: '1px solid #d0d7de',
-  padding: 12,
-  background: '#fff',
+  borderTop: '1px solid #21262d',
+  padding: 14,
+  background: '#161b22',
 }
 const INPUT_INNER = {
-  maxWidth: 900,
-  margin: '0 auto',
   display: 'flex',
   gap: 8,
 }
 const INPUT = {
   flex: 1,
-  padding: '8px 12px',
-  border: '1px solid #d0d7de',
-  borderRadius: 6,
+  padding: '10px 14px',
+  border: '1px solid #30363d',
+  borderRadius: 8,
   fontSize: 14,
   fontFamily: 'inherit',
   resize: 'vertical',
-  minHeight: 40,
+  minHeight: 42,
   maxHeight: 200,
+  background: '#21262d',
+  color: '#e6edf3',
+  outline: 'none',
+  colorScheme: 'dark',
 }
 const SEND_BTN = {
-  padding: '8px 18px',
-  border: '1px solid #1f6feb',
-  borderRadius: 6,
-  background: '#1f6feb',
+  padding: '8px 20px',
+  border: 'none',
+  borderRadius: 8,
+  background: 'linear-gradient(135deg, #1158d4 0%, #1f6feb 100%)',
   color: '#fff',
   fontSize: 13,
   cursor: 'pointer',
-  fontWeight: 500,
+  fontWeight: 600,
+  whiteSpace: 'nowrap',
+  boxShadow: '0 0 0 1px rgba(31,111,235,0.4), 0 2px 6px rgba(31,111,235,0.25)',
 }
 const FINALIZE_BTN = {
   padding: '8px 14px',
-  border: '1px solid #8957e5',
-  borderRadius: 6,
-  background: '#8957e5',
+  border: 'none',
+  borderRadius: 8,
+  background: 'linear-gradient(135deg, #6e40c9 0%, #8957e5 100%)',
   color: '#fff',
   fontSize: 13,
   cursor: 'pointer',
-  fontWeight: 500,
+  fontWeight: 600,
   whiteSpace: 'nowrap',
+  boxShadow: '0 0 0 1px rgba(137,87,229,0.4), 0 2px 6px rgba(137,87,229,0.25)',
 }
 
 // Synthesis prompts — kept here (not in agents.py) because they're a UI
@@ -308,7 +332,142 @@ const FINALIZE_FRONTEND_PROMPT =
   "fenced ```python``` code draft of render(params) that combines the " +
   "data spec above with this UI spec. The code-gen AI in /editor will " +
   "save and refine your draft."
-const TAG_HINT = { fontSize: 11, color: '#888', margin: '4px 0 0 4px' }
+const TAG_HINT = { fontSize: 11, color: '#484f58', margin: '6px 0 0 4px' }
+
+const BLOCKED_BADGE = {
+  display: 'inline-block',
+  background: '#3d1515',
+  border: '1px solid #6e1c1c',
+  borderRadius: 4,
+  color: '#f85149',
+  fontSize: 10,
+  fontWeight: 700,
+  padding: '1px 6px',
+  marginLeft: 8,
+  letterSpacing: 0.3,
+  textTransform: 'uppercase',
+  verticalAlign: 'middle',
+}
+const RESUME_BANNER = {
+  background: '#161b22',
+  border: '1px solid #30363d',
+  borderRadius: 8,
+  padding: '10px 14px',
+  marginBottom: 16,
+  display: 'flex',
+  alignItems: 'baseline',
+  gap: 10,
+  flexWrap: 'wrap',
+  fontSize: 12,
+}
+const RESUME_LABEL = {
+  color: '#6e7681', fontWeight: 700, textTransform: 'uppercase',
+  letterSpacing: 0.6, fontSize: 10, flexShrink: 0,
+}
+const RESUME_Q = { color: '#c9d1d9', fontStyle: 'italic', flex: 1, minWidth: 0 }
+const RESUME_TAG = {
+  fontWeight: 600, borderRadius: 4, padding: '1px 7px',
+  fontSize: 10, letterSpacing: 0.2, flexShrink: 0,
+}
+const RESUME_NEXT = { color: '#8b949e', fontSize: 11, flexShrink: 0 }
+
+// Task context card (right panel — above pipeline)
+const TASK_CTX_CARD = {
+  background: '#1a1f2e',
+  border: '1px solid #2d3561',
+  borderLeft: '3px solid #58a6ff',
+  borderRadius: 10,
+  padding: '12px 14px',
+  marginBottom: 14,
+}
+const TASK_CTX_TITLE = {
+  fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+  letterSpacing: 1, color: '#58a6ff', marginBottom: 10,
+}
+const TASK_CTX_FIELD = { marginTop: 8 }
+const TASK_CTX_KEY = {
+  fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5,
+  color: '#6e7681', fontWeight: 700, marginBottom: 3,
+}
+const TASK_CTX_VAL = { fontSize: 12, color: '#c9d1d9', lineHeight: 1.5 }
+const TASK_CTX_CHIP = {
+  display: 'inline-block', fontSize: 10, padding: '2px 7px',
+  borderRadius: 4, marginRight: 4, marginTop: 3,
+  background: '#21262d', border: '1px solid #30363d', color: '#8b949e',
+}
+
+// Context questions special message style
+const MSG_CTX_Q = {
+  ...{ margin: '12px 0', padding: '12px 16px', borderRadius: 10, fontSize: 14,
+       lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#c9d1d9' },
+  background: '#1a1225',
+  border: '1px solid #3d2060',
+  borderLeft: '3px solid #8957e5',
+}
+const CTX_Q_SECTION = {
+  marginTop: 10, padding: '10px 12px',
+  background: '#0d1117', borderRadius: 8,
+  border: '1px solid #30363d',
+}
+const CTX_Q_LABEL = {
+  fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+  letterSpacing: 0.8, color: '#8957e5', marginBottom: 8,
+}
+const CTX_Q_ITEM = {
+  display: 'flex', gap: 10, alignItems: 'baseline',
+  padding: '4px 0', fontSize: 13, color: '#c9d1d9',
+}
+const CTX_Q_NUM = {
+  flexShrink: 0, width: 18, height: 18, borderRadius: '50%',
+  background: '#8957e5', color: '#fff', fontSize: 10,
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  fontWeight: 700,
+}
+
+// Interactive context form styles
+const CTX_FORM_QUESTION = { marginBottom: 14 }
+const CTX_FORM_INPUT = {
+  width: '100%',
+  padding: '7px 10px',
+  border: '1px solid #30363d',
+  borderRadius: 6,
+  background: '#0d1117',
+  color: '#e6edf3',
+  fontSize: 13,
+  fontFamily: 'inherit',
+  outline: 'none',
+  boxSizing: 'border-box',
+  colorScheme: 'dark',
+}
+const CTX_FORM_BTN_GROUP = { display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }
+const CTX_FORM_TYPE_BTN = {
+  padding: '5px 12px',
+  border: '1px solid #30363d',
+  borderRadius: 5,
+  background: '#21262d',
+  color: '#8b949e',
+  fontSize: 12,
+  cursor: 'pointer',
+  fontWeight: 500,
+}
+const CTX_FORM_TYPE_BTN_ACTIVE = {
+  ...CTX_FORM_TYPE_BTN,
+  background: '#1a1225',
+  border: '1px solid #8957e5',
+  color: '#d2a8ff',
+}
+const CTX_FORM_SUBMIT = {
+  marginTop: 14,
+  padding: '7px 18px',
+  border: 'none',
+  borderRadius: 6,
+  background: 'linear-gradient(135deg, #6e40c9 0%, #8957e5 100%)',
+  color: '#fff',
+  fontSize: 13,
+  cursor: 'pointer',
+  fontWeight: 600,
+  boxShadow: '0 0 0 1px rgba(137,87,229,0.3)',
+}
 
 // ─── SSE helpers ([L039] CRLF-safe) ────────────────────────────────
 
@@ -364,6 +523,104 @@ async function streamSSEPost(url, body, onEvent) {
 }
 
 // ─── @mention parsing ──────────────────────────────────────────────
+
+// Returns true when an assistant message hit a wall — has a SOLUTION PLAN
+// or explicitly states impossibility in the ANSWER section.
+function isBlockedMessage(content) {
+  if (!content) return false
+  if (/SOLUTION PLAN\s*:/i.test(content)) return true
+  const answerMatch = content.match(/ANSWER\s*:\s*\n?([\s\S]{0,500}?)(?=\n\s*[A-Z ]{4,}\s*:|$)/i)
+  if (answerMatch) {
+    const a = answerMatch[1].toLowerCase()
+    if (/\b(not possible|cannot|can't|no .{1,30} exist|not available|does not exist|no data|no .{1,20} table|not in the (db|schema|database))\b/.test(a)) return true
+  }
+  return false
+}
+
+// Extracts a one-line resume summary from a loaded conversation — used by
+// the session-start banner so the user knows where they left off.
+function buildResumeSummary(msgs) {
+  if (!msgs || msgs.length < 2) return null
+  const firstUser = msgs.find(m => m.role === 'user')
+  const hasBlocked = msgs.some(m => m.role === 'assistant' && isBlockedMessage(m.content))
+  const feasibleCount = msgs.filter(m => m.role === 'assistant' && !isBlockedMessage(m.content) && m.content).length
+  let nextStep = null
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i]
+    if (m.role !== 'assistant') continue
+    const match = (m.content || '').match(/NEXT STEPS?\s*:\s*\n?([-•* ]?.{5,100})/i)
+    if (match) { nextStep = match[1].replace(/^[-•*\s]+/, '').trim().slice(0, 80); break }
+  }
+  return {
+    question: firstUser ? stripMentions(firstUser.content || '').trim().slice(0, 70) : '—',
+    hasBlocked,
+    feasibleCount,
+    nextStep,
+  }
+}
+
+// Extract numbered questions from a CONTEXT QUESTIONS block.
+function parseContextQuestions(content) {
+  if (!content) return null
+  const match = content.match(/CONTEXT QUESTIONS\s*:\s*\n([\s\S]*?)(?=\n\s*(?:ASSUMPTIONS|ANSWER|EVIDENCE|NEXT STEPS)\s*:|\n\n\n|$)/i)
+  if (!match) return null
+  const qs = match[1]
+    .split('\n')
+    .map(l => l.replace(/^\s*\d+[\.\)]\s*/, '').trim())
+    .filter(l => l.length > 8)
+  return qs.length ? qs : null
+}
+
+// Strip CONTEXT QUESTIONS block from prose so it doesn't render twice
+// (we render it as a styled card instead).
+function stripContextQuestions(content) {
+  if (!content) return content
+  return content.replace(/CONTEXT QUESTIONS\s*:\s*\n[\s\S]*?(?=\n\s*(?:ASSUMPTIONS|ANSWER|EVIDENCE|NEXT STEPS)\s*:|\n\n\n|$)/i, '').trim()
+}
+
+// Build a structured task context summary from all messages in the conversation.
+// Used to populate the Task Context card in the right panel.
+function parseTaskContext(msgs) {
+  if (!msgs || msgs.length < 1) return null
+  const firstUser = msgs.find(m => m.role === 'user')
+  if (!firstUser) return null
+  const goal = stripMentions(firstUser.content || '').trim()
+
+  const evidenceLines = []
+  const assumptions = []
+  let widgetType = null
+
+  for (const m of msgs) {
+    if (m.role !== 'assistant' || !m.content) continue
+    // Collect evidence citations
+    const evMatch = m.content.match(/EVIDENCE\s*:\s*\n([\s\S]*?)(?=\n\s*[A-Z ]{4,}\s*:|$)/i)
+    if (evMatch) {
+      evMatch[1].split('\n')
+        .map(l => l.replace(/^[-•*\s]+/, '').trim())
+        .filter(l => l.startsWith('[From') && l.length > 10)
+        .slice(0, 3)
+        .forEach(l => evidenceLines.push(l))
+    }
+    // Collect assumptions (non-trivial ones)
+    const asMatch = m.content.match(/ASSUMPTIONS\s*:\s*\n([\s\S]*?)(?=\n\s*ANSWER\s*:)/i)
+    if (asMatch) {
+      asMatch[1].split('\n')
+        .map(l => l.replace(/^[-•*\s]+/, '').trim())
+        .filter(l => l.length > 5 && !/^none$/i.test(l))
+        .slice(0, 2)
+        .forEach(l => assumptions.push(l))
+    }
+    // Widget type from finalize synthesis
+    const wtMatch = m.content.match(/WIDGET TYPE\s*:\s*(.+)/i)
+    if (wtMatch) widgetType = wtMatch[1].trim()
+  }
+
+  const uniqueEvidence = [...new Set(evidenceLines)].slice(0, 5)
+  const uniqueAssumptions = [...new Set(assumptions)].slice(0, 3)
+  if (!goal && !uniqueEvidence.length) return null
+
+  return { goal, evidence: uniqueEvidence, assumptions: uniqueAssumptions, widgetType }
+}
 
 function detectAgents(text) {
   const mentioned = []
@@ -596,6 +853,215 @@ function extractStepsData(messages) {
 }
 
 // One step card with label + body. Empty mode shows dashed border.
+function TaskContextCard({ context }) {
+  if (!context || !context.goal) return null
+  return (
+    <div style={TASK_CTX_CARD}>
+      <div style={TASK_CTX_TITLE}>🗂 Task Context</div>
+      <div style={TASK_CTX_FIELD}>
+        <div style={TASK_CTX_KEY}>Goal</div>
+        <div style={TASK_CTX_VAL}>
+          {context.goal.slice(0, 140)}{context.goal.length > 140 ? '…' : ''}
+        </div>
+      </div>
+      {context.widgetType && (
+        <div style={TASK_CTX_FIELD}>
+          <div style={TASK_CTX_KEY}>Widget</div>
+          <div><span style={TASK_CTX_CHIP}>{context.widgetType}</span></div>
+        </div>
+      )}
+      {context.evidence.length > 0 && (
+        <div style={TASK_CTX_FIELD}>
+          <div style={TASK_CTX_KEY}>Evidence gathered</div>
+          <div>
+            {context.evidence.map((e, i) => (
+              <div key={i} style={{ ...TASK_CTX_VAL, fontSize: 11, marginTop: 2, color: '#8b949e' }}>{e}</div>
+            ))}
+          </div>
+        </div>
+      )}
+      {context.assumptions.length > 0 && (
+        <div style={TASK_CTX_FIELD}>
+          <div style={TASK_CTX_KEY}>Assumptions</div>
+          <div>
+            {context.assumptions.map((a, i) => (
+              <div key={i} style={{ ...TASK_CTX_VAL, fontSize: 11, marginTop: 2, color: '#e3b341' }}>· {a}</div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ContextQuestionsCard({ questions }) {
+  if (!questions || !questions.length) return null
+  return (
+    <div style={CTX_Q_SECTION}>
+      <div style={CTX_Q_LABEL}>🔍 Clarifying questions</div>
+      {questions.map((q, i) => (
+        <div key={i} style={CTX_Q_ITEM}>
+          <span style={CTX_Q_NUM}>{i + 1}</span>
+          <span>{q}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Parse inline (opt A / opt B / opt C) options from a question string.
+// Returns array of option strings, or null if no options found.
+function parseQuestionOptions(q) {
+  const m = q.match(/\(([^)]{4,})\)\s*$/)
+  if (!m) return null
+  const opts = m[1].split(/\s*\/\s*/).map(s => s.trim()).filter(s => s.length > 0)
+  return opts.length >= 2 ? opts : null
+}
+
+// Strip the trailing (opt A / opt B) part from question display text.
+function stripQuestionOptions(q) {
+  return q.replace(/\s*\([^)]+\)\s*$/, '').trim()
+}
+
+function guessInputType(q) {
+  if (parseQuestionOptions(q)) return 'option-select'   // has inline (A / B / C)
+  const lower = q.toLowerCase()
+  // Only trigger widget-select for questions explicitly asking about output/UI format.
+  // Avoid matching "table" or "chart" when they appear in schema-context sentences.
+  if (/output format|widget type|which format|what format|how.{0,20}display|what.{0,20}visuali|ui format/.test(lower)) {
+    return 'widget-select'
+  }
+  return 'text'
+}
+
+const WIDGET_TYPE_OPTIONS = ['table', 'chart', 'text', 'number', 'input', 'button']
+
+function ContextForm({ questions, onSubmit, busy }) {
+  const [answers, setAnswers] = useState(() => questions.map(() => ''))
+  const [submitted, setSubmitted] = useState(false)
+
+  const setAnswer = (i, val) => setAnswers(prev => {
+    const next = [...prev]
+    next[i] = val
+    return next
+  })
+
+  const handleSubmit = () => {
+    const formatted = answers
+      .map((a, i) => `${i + 1}. ${a.trim() || '(not specified)'}`)
+      .join('\n')
+    setSubmitted(true)
+    onSubmit(formatted)
+  }
+
+  const hasAnyAnswer = answers.some(a => a.trim())
+
+  return (
+    <div style={CTX_Q_SECTION}>
+      <div style={CTX_Q_LABEL}>🔍 Help the agent — pick or type your answers</div>
+      {questions.map((q, i) => {
+        const inputType = guessInputType(q)
+        const inlineOpts = inputType === 'option-select' ? parseQuestionOptions(q) : null
+        const displayQ = inlineOpts ? stripQuestionOptions(q) : q
+        const buttonOptions = inlineOpts || (inputType === 'widget-select' ? WIDGET_TYPE_OPTIONS : null)
+        return (
+          <div key={i} style={CTX_FORM_QUESTION}>
+            <div style={{ ...CTX_Q_ITEM, marginBottom: 8, alignItems: 'flex-start' }}>
+              <span style={CTX_Q_NUM}>{i + 1}</span>
+              <span style={{ fontSize: 13, color: '#c9d1d9', flex: 1 }}>{displayQ}</span>
+            </div>
+            {buttonOptions ? (
+              <>
+                <div style={CTX_FORM_BTN_GROUP}>
+                  {buttonOptions.map(opt => (
+                    <button
+                      key={opt}
+                      style={answers[i] === opt ? CTX_FORM_TYPE_BTN_ACTIVE : CTX_FORM_TYPE_BTN}
+                      onClick={() => setAnswer(i, answers[i] === opt ? '' : opt)}
+                      disabled={busy || submitted}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  style={{
+                    ...CTX_FORM_INPUT,
+                    marginTop: 6,
+                    fontSize: 12,
+                    opacity: 0.75,
+                    borderStyle: 'dashed',
+                  }}
+                  value={buttonOptions.includes(answers[i]) ? '' : answers[i]}
+                  onChange={e => setAnswer(i, e.target.value)}
+                  placeholder="or type your own answer…"
+                  disabled={busy || submitted}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && hasAnyAnswer && !submitted && !busy) {
+                      e.preventDefault()
+                      handleSubmit()
+                    }
+                  }}
+                />
+              </>
+            ) : (
+              <input
+                type="text"
+                style={CTX_FORM_INPUT}
+                value={answers[i]}
+                onChange={e => setAnswer(i, e.target.value)}
+                placeholder="Your answer…"
+                disabled={busy || submitted}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && hasAnyAnswer && !submitted && !busy) {
+                    e.preventDefault()
+                    handleSubmit()
+                  }
+                }}
+              />
+            )}
+          </div>
+        )
+      })}
+      <button
+        style={{
+          ...CTX_FORM_SUBMIT,
+          opacity: (!hasAnyAnswer || submitted || busy) ? 0.45 : 1,
+          cursor: (!hasAnyAnswer || submitted || busy) ? 'default' : 'pointer',
+        }}
+        onClick={handleSubmit}
+        disabled={!hasAnyAnswer || busy || submitted}
+      >
+        {submitted ? '✓ Sent' : 'Submit answers →'}
+      </button>
+    </div>
+  )
+}
+
+function ResumeBanner({ messages, activeId }) {
+  if (!activeId || !messages || messages.length < 2) return null
+  const s = buildResumeSummary(messages)
+  if (!s) return null
+  return (
+    <div style={RESUME_BANNER}>
+      <span style={RESUME_LABEL}>↩ Resuming</span>
+      <span style={RESUME_Q}>"{s.question}{s.question.length >= 70 ? '…' : ''}"</span>
+      {s.hasBlocked && (
+        <span style={{ ...RESUME_TAG, color: '#f85149', background: '#3d1515', border: '1px solid #6e1c1c' }}>
+          ⚠ blocked
+        </span>
+      )}
+      {!s.hasBlocked && s.feasibleCount > 0 && (
+        <span style={{ ...RESUME_TAG, color: '#3fb950', background: '#0c2011', border: '1px solid #1a3a25' }}>
+          ✓ feasible
+        </span>
+      )}
+      {s.nextStep && <span style={RESUME_NEXT}>→ {s.nextStep}</span>}
+    </div>
+  )
+}
+
 function StepCard({ label, empty, children }) {
   return (
     <div style={empty ? STEP_CARD_EMPTY : STEP_CARD}>
@@ -610,7 +1076,7 @@ function StepCard({ label, empty, children }) {
 // a subtle source tag on cards that came from an agent's synthesis.
 // Prerequisites card surfaces SOLUTION PLAN content (e.g. DDL) so
 // blockers don't get buried in chat.
-function StepsPanel({ steps, setErrMsg }) {
+function StepsPanel({ steps, messages, setErrMsg }) {
   const {
     userQuestion,
     prerequisites,
@@ -620,11 +1086,14 @@ function StepsPanel({ steps, setErrMsg }) {
     build, buildMessage,
   } = steps
 
+  const taskCtx = parseTaskContext(messages)
+
   let stepNum = 0
   const nextStep = () => `${++stepNum}`
 
   return (
-    <div style={STEPS_PANEL}>
+    <div className="dark-scroll" style={STEPS_PANEL}>
+      <TaskContextCard context={taskCtx} />
       <div style={STEPS_TITLE}>📋 Plan to Ship the Widget</div>
 
       <StepCard label={`${nextStep()} · Question`} empty={!userQuestion}>
@@ -636,8 +1105,8 @@ function StepsPanel({ steps, setErrMsg }) {
           SOLUTION PLAN in the conversation. Renders only when present. */}
       {prerequisites.length > 0 && (
         <>
-          <div style={{ ...STEP_CARD, borderColor: '#f4c842', background: '#fffbea' }}>
-            <div style={{ ...STEP_LABEL, color: '#9a6700' }}>
+          <div style={{ ...STEP_CARD, borderColor: '#b08800', background: '#1c1600' }}>
+            <div style={{ ...STEP_LABEL, color: '#e3b341' }}>
               {nextStep()} · 🔧 Prerequisites
             </div>
             <div style={{ ...STEP_BODY, marginBottom: 6 }}>
@@ -645,10 +1114,10 @@ function StepsPanel({ steps, setErrMsg }) {
             </div>
             {prerequisites.map((pre, idx) => (
               <div key={idx} style={{ marginTop: 8 }}>
-                <div style={{ ...STEP_FIELD_KEY, color: '#9a6700' }}>
+                <div style={{ ...STEP_FIELD_KEY, color: '#e3b341' }}>
                   from @{pre.agent}{prerequisites.length > 1 ? ` (#${idx + 1})` : ''}
                 </div>
-                <pre style={{ ...STEP_CODE_PRE, background: '#fffaeb', color: '#3d2c00', border: '1px solid #f0d489' }}>
+                <pre style={STEP_CODE_PRE}>
                   {pre.plan}
                 </pre>
               </div>
@@ -693,7 +1162,7 @@ function StepsPanel({ steps, setErrMsg }) {
 
       {build ? (
         <div style={STEP_BUILD_CARD}>
-          <div style={{ ...STEP_LABEL, color: '#1a7f37' }}>{nextStep()} · Build</div>
+          <div style={{ ...STEP_LABEL, color: '#3fb950' }}>{nextStep()} · Build</div>
           <div style={{ ...STEP_BODY, marginBottom: 10 }}>
             <div style={{ fontWeight: 600, marginBottom: 2 }}>Ready to ship 🚀</div>
             <code style={{ fontSize: 11, color: '#1f2328' }}>
@@ -955,16 +1424,19 @@ export default function PlanPage() {
     return [...baseHistory, { role: 'assistant', agent, content: finalContent }]
   }
 
-  const send = async () => {
-    const text = draft.trim()
+  const send = async (overrideText) => {
+    const text = (overrideText !== undefined ? overrideText : draft).trim()
     if (!text || busy) return
-    const agents = detectAgents(text)
+    // On the very first turn (no history yet), always call both agents so
+    // @backend can ask about data and @frontend can ask about UI in parallel.
+    // After that, respect explicit @mentions or fall back to @backend only.
+    const agents = messages.length === 0 ? AGENTS : detectAgents(text)
     const cleanPrompt = stripMentions(text) || text
 
     const userMsg = { role: 'user', content: text }
     let snapshot = [...messages, userMsg]
     setMessages(snapshot)
-    setDraft('')
+    if (overrideText === undefined) setDraft('')
     setBusy(true)
     setErrMsg(null)
 
@@ -1015,13 +1487,13 @@ export default function PlanPage() {
   }
 
   return (
-    <div style={PAGE}>
+    <div className="plan-page" style={PAGE}>
       {/* ─── Sidebar ─────────────────────────────────────────── */}
       <div style={SIDEBAR}>
         <div style={SIDEBAR_HEADER}>
           <button style={NEW_BTN} onClick={newChat}>+ New Chat</button>
         </div>
-        <div style={SIDEBAR_LIST}>
+        <div className="dark-scroll" style={SIDEBAR_LIST}>
           {conversations.length === 0 && (
             <div style={CONV_EMPTY}>No saved chats yet.</div>
           )}
@@ -1064,7 +1536,8 @@ export default function PlanPage() {
           <a style={NAV_LINK} href="/editor?screen=sales_report">→ open editor</a>
         </div>
 
-        <div ref={scrollRef} style={TRANSCRIPT}>
+        <div ref={scrollRef} className="dark-scroll" style={TRANSCRIPT}>
+          <ResumeBanner messages={messages} activeId={activeId} />
           {messages.length === 0 && (
             <div style={HINT}>
               Discovery chat. Ask two AI experts about what's possible <em>before</em> you build.
@@ -1095,13 +1568,30 @@ export default function PlanPage() {
                 break
               }
             }
+            // Find all assistant messages with context questions that are
+            // AFTER the last user message — those are "pending" and get the
+            // interactive form. Earlier ones (already answered) stay static.
+            let lastUserIdx = -1
+            for (let k = messages.length - 1; k >= 0; k--) {
+              if (messages[k].role === 'user') { lastUserIdx = k; break }
+            }
+            const ctxQFormIndices = new Set()
+            for (let k = lastUserIdx + 1; k < messages.length; k++) {
+              if (messages[k].role === 'assistant' && parseContextQuestions(messages[k].content)) {
+                ctxQFormIndices.add(k)
+              }
+            }
             return messages.map((m, i) => {
             const style =
               m.role === 'user'
                 ? MSG_USER
+                : parseContextQuestions(m.content)
+                ? MSG_CTX_Q
                 : m.agent === 'backend'
                 ? MSG_BACKEND
                 : MSG_FRONTEND
+            const ctxQuestions = m.role === 'assistant' ? parseContextQuestions(m.content) : null
+            const displayContent = ctxQuestions ? stripContextQuestions(m.content) : m.content
             const label = m.role === 'user' ? 'you' : `@${m.agent}`
             // Only the LAST assistant message with a BUILD: hook shows
             // the Build button. Earlier ones are history.
@@ -1121,10 +1611,15 @@ export default function PlanPage() {
             }
             return (
               <div key={i} style={style}>
-                <div style={MSG_HEADER}>{label}</div>
+                <div style={MSG_HEADER}>
+                  {label}
+                  {m.role === 'assistant' && isBlockedMessage(m.content) && (
+                    <span style={BLOCKED_BADGE}>⚠ blocked</span>
+                  )}
+                </div>
                 <div>
-                  {m.content
-                    ? splitMessageContent(m.content).map((seg, j) =>
+                  {displayContent
+                    ? splitMessageContent(displayContent).map((seg, j) =>
                         seg.type === 'code' ? (
                           <CodeBlock key={j} lang={seg.lang} code={seg.code} />
                         ) : (
@@ -1136,6 +1631,15 @@ export default function PlanPage() {
                     : m.role === 'assistant'
                     ? '…thinking'
                     : ''}
+                  {ctxQuestions && ctxQFormIndices.has(i) ? (
+                    <ContextForm
+                      questions={ctxQuestions}
+                      onSubmit={(text) => send(text)}
+                      busy={busy}
+                    />
+                  ) : (
+                    <ContextQuestionsCard questions={ctxQuestions} />
+                  )}
                 </div>
                 {build && (
                   <BuildButton
@@ -1167,7 +1671,7 @@ export default function PlanPage() {
             }
             if (!has) return null
             return (
-              <div style={{ ...HINT, marginTop: 8, fontStyle: 'normal', color: '#666' }}>
+              <div style={{ ...HINT, marginTop: 8, fontStyle: 'normal', color: '#8b949e' }}>
                 💡 Review the plan above. Type a follow-up (e.g.{' '}
                 <code>@backend filter to top 3</code>) to refine, then click{' '}
                 <strong>Finalize Plan</strong> again — or click the green{' '}
@@ -1182,6 +1686,7 @@ export default function PlanPage() {
         <div style={INPUT_BAR}>
           <div style={INPUT_INNER}>
             <textarea
+              className="plan-input"
               style={INPUT}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -1218,6 +1723,7 @@ export default function PlanPage() {
       {/* ─── Right pipeline panel ────────────────────────────── */}
       <StepsPanel
         steps={extractStepsData(messages)}
+        messages={messages}
         setErrMsg={setErrMsg}
       />
     </div>

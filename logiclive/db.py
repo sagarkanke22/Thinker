@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Optional
 
 from dotenv import load_dotenv
-from sqlalchemy import Column, DateTime, Integer, JSON, String, Text, Engine, create_engine
+from sqlalchemy import Column, DateTime, Integer, JSON, String, Text, Engine, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 load_dotenv()
@@ -48,6 +48,7 @@ class Widget(Base):
     widget_id = Column(String, primary_key=True, nullable=False)
     base_config = Column(JSON, nullable=False)
     logic_code = Column(Text, nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0, server_default='0')
     updated_at = Column(
         DateTime,
         default=datetime.utcnow,
@@ -107,4 +108,12 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 
 def init_db(eng: Optional[Engine] = None) -> None:
     """Create tables if missing. Idempotent. Optionally bind to a specific engine."""
-    Base.metadata.create_all(bind=eng or engine)
+    target = eng or engine
+    Base.metadata.create_all(bind=target)
+    # Add sort_order column to existing databases that predate this field.
+    with target.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE widgets ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"))
+            conn.commit()
+        except Exception:
+            pass  # column already exists

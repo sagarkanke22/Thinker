@@ -18,7 +18,7 @@ function isEditorPath(path) {
 }
 
 function isPlanPath(path) {
-  return path === '/plan' || path.startsWith('/plan/')
+  return path === '/' || path === '/plan' || path.startsWith('/plan/')
 }
 
 // ─── TopNav styles ────────────────────────────────────────────────
@@ -114,7 +114,7 @@ export default function App() {
   if (!isDev) return <AppRenderer />
   return (
     <div style={SHELL}>
-      <TopNav currentPath={path} />
+      <TopNav currentPath={path === '/' ? '/plan' : path} />
       <div style={PAGE_FRAME}>
         {isPlanPath(path) ? <PlanPage /> : <Editor />}
       </div>

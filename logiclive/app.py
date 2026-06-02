@@ -705,7 +705,7 @@ def screen(
     stmt = (
         select(Widget.widget_id, Widget.base_config)
         .where(Widget.screen_id == screen_id)
-        .order_by(Widget.widget_id)
+        .order_by(Widget.sort_order, Widget.widget_id)
     )
     rows = db.execute(stmt).all()
     if not rows:
@@ -723,3 +723,25 @@ def screen(
             for r in rows
         ],
     }
+
+
+class ReorderRequest(BaseModel):
+    widget_ids: list[str]
+
+
+@app.put("/screen/order")
+def reorder_widgets(
+    screen_id: Annotated[str | None, Query()] = None,
+    body: ReorderRequest = None,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Persist widget display order for a screen. widget_ids is the full
+    ordered list — each widget gets sort_order = its index in the list."""
+    if not screen_id:
+        raise HTTPException(status_code=400, detail="screen_id required")
+    for idx, widget_id in enumerate(body.widget_ids):
+        widget = db.get(Widget, (screen_id, widget_id))
+        if widget:
+            widget.sort_order = idx
+    db.commit()
+    return {"ok": True}

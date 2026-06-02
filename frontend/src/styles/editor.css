@@ -108,3 +108,28 @@
   height: 100%;
   box-sizing: border-box;
 }
+
+/* Plan page — dark textarea placeholder */
+.plan-input::placeholder {
+  color: #484f58;
+}
+
+/* Plan page — dark scrollbars: element itself + all scrollable descendants */
+.dark-scroll::-webkit-scrollbar,
+.dark-scroll ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.dark-scroll::-webkit-scrollbar-track,
+.dark-scroll ::-webkit-scrollbar-track {
+  background: transparent;
+}
+.dark-scroll::-webkit-scrollbar-thumb,
+.dark-scroll ::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 3px;
+}
+.dark-scroll::-webkit-scrollbar-thumb:hover,
+.dark-scroll ::-webkit-scrollbar-thumb:hover {
+  background: #484f58;
+}

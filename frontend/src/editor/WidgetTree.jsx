@@ -2,7 +2,7 @@
 // Clicking a widget calls onSelect(widget_id) which the Editor uses to
 // drive the CodeEditor (Step 16) and ChatPanel (Step 21).
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { fetchScreen } from '../api/client.js'
 
 const TYPE_COLORS = {
@@ -23,8 +23,19 @@ const ROW = {
   fontSize: 13,
   userSelect: 'none',
   marginBottom: 2,
+  transition: 'background 0.1s',
 }
 const ROW_SELECTED = { background: '#eaf3ff' }
+const ROW_DRAG_OVER = { background: '#dbeafe', outline: '2px dashed #1f6feb', outlineOffset: -2 }
+const DRAG_HANDLE = {
+  color: '#bbb',
+  fontSize: 12,
+  cursor: 'grab',
+  padding: '0 2px',
+  lineHeight: 1,
+  flexShrink: 0,
+  letterSpacing: -1,
+}
 const BADGE = {
   fontSize: 10,
   fontWeight: 600,
@@ -121,6 +132,10 @@ export function WidgetTree({ screenId, selectedWidgetId, onSelect }) {
   const [busy, setBusy] = useState(false)
   const [addError, setAddError] = useState(null)
 
+  // Drag-and-drop state
+  const dragId = useRef(null)
+  const [dragOverId, setDragOverId] = useState(null)
+
   const refresh = () =>
     fetchScreen(screenId)
       .then((d) => setWidgets(d.widgets))
@@ -191,6 +206,47 @@ export function WidgetTree({ screenId, selectedWidgetId, onSelect }) {
     }
   }
 
+  const saveOrder = async (ordered) => {
+    try {
+      await fetch(`/api/screen/order?screen_id=${encodeURIComponent(screenId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ widget_ids: ordered.map((w) => w.widget_id) }),
+      })
+    } catch (_) { /* best-effort */ }
+  }
+
+  const onDragStart = (e, widgetId) => {
+    dragId.current = widgetId
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const onDragOver = (e, widgetId) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (widgetId !== dragId.current) setDragOverId(widgetId)
+  }
+
+  const onDrop = (e, targetId) => {
+    e.preventDefault()
+    setDragOverId(null)
+    const from = dragId.current
+    dragId.current = null
+    if (!from || from === targetId || !widgets) return
+    const list = [...widgets]
+    const fromIdx = list.findIndex((w) => w.widget_id === from)
+    const toIdx = list.findIndex((w) => w.widget_id === targetId)
+    if (fromIdx === -1 || toIdx === -1) return
+    list.splice(toIdx, 0, list.splice(fromIdx, 1)[0])
+    setWidgets(list)
+    saveOrder(list)
+  }
+
+  const onDragEnd = () => {
+    dragId.current = null
+    setDragOverId(null)
+  }
+
   return (
     <div className="editor-pad">
       <div className="editor-section-label">Widgets</div>
@@ -249,12 +305,22 @@ export function WidgetTree({ screenId, selectedWidgetId, onSelect }) {
       {widgets &&
         widgets.map((w) => {
           const isSelected = w.widget_id === selectedWidgetId
-          const style = isSelected ? { ...ROW, ...ROW_SELECTED } : ROW
+          const isDragOver = w.widget_id === dragOverId
+          const style = isDragOver
+            ? { ...ROW, ...ROW_DRAG_OVER }
+            : isSelected
+            ? { ...ROW, ...ROW_SELECTED }
+            : ROW
           return (
             <div
               key={w.widget_id}
+              draggable
               style={style}
               onClick={() => onSelect && onSelect(w.widget_id)}
+              onDragStart={(e) => onDragStart(e, w.widget_id)}
+              onDragOver={(e) => onDragOver(e, w.widget_id)}
+              onDrop={(e) => onDrop(e, w.widget_id)}
+              onDragEnd={onDragEnd}
               onMouseEnter={(e) => {
                 const x = e.currentTarget.querySelector('button')
                 if (x) x.style.visibility = 'visible'
@@ -263,8 +329,9 @@ export function WidgetTree({ screenId, selectedWidgetId, onSelect }) {
                 const x = e.currentTarget.querySelector('button')
                 if (x) x.style.visibility = 'hidden'
               }}
-              title={`${w.type} · ${w.widget_id}`}
+              title={`${w.type} · ${w.widget_id} — drag to reorder`}
             >
+              <span style={DRAG_HANDLE} title="drag to reorder">⠿</span>
               <span
                 style={{ ...BADGE, background: TYPE_COLORS[w.type] || '#888' }}
               >

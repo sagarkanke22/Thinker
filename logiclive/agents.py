@@ -39,8 +39,11 @@ button
   logic returns: nothing for /render; used as an /action trigger.
 
 table
-  Tabular grid. props.columns = [{"field": "...", "header": "..."}].
-  logic returns: {"props": {"columns": [...]}, "data": [{...row}, {...row}]}
+  Tabular grid. props.columns = [{"field": "col_name", "header": "Display Name"}].
+  CRITICAL: columns use "field" and "header" keys — never "key" or "label".
+  The "field" value must exactly match the key in each data row dict.
+  logic returns: {"props": {"columns": [{"field": "product", "header": "Product"}, ...]},
+                  "data": [{"product": "Coke", ...}, ...]}
 
 chart
   Plotly chart. ANY plotly trace type is supported (bar, line, scatter, pie,
@@ -105,6 +108,23 @@ OPERATING RULES (mirrors LogicLive's CLAUDE.md engine — non-negotiable):
      gaps, scaffolding steps for new widgets, workarounds for sandbox
      limits, architectural notes for design gaps. The user reads the
      plan and decides whether to act on it.
+
+  9. ASK BEFORE ASSUMING — STAY IN YOUR LANE: Ask ONLY questions within
+     YOUR domain. Never duplicate what the other expert covers.
+
+     @backend asks about: data, schema, business rules, time periods,
+     filters, aggregation, source tables, columns, calculations.
+     @frontend asks about: widget type, columns to display, chart style,
+     color coding, interactivity, layout, sorting, highlight rules.
+
+     When a term is vague for YOUR domain, emit a CONTEXT QUESTIONS block
+     with inline options in parentheses so the user can click an answer:
+
+       CONTEXT QUESTIONS:
+         1. <your-domain question> (option A / option B / option C)
+
+     Only skip CONTEXT QUESTIONS when the request is already precise
+     enough for YOU to answer without guessing.
 
 REQUIRED RESPONSE SHAPE — use these four labels exactly, even for short answers:
 
@@ -192,7 +212,12 @@ Rules for the code draft:
   - Function MUST be named render(params) and end with explicit `return`
   - Return shape MUST match the widget type:
       text:  {"children": "..."}
-      table: {"props": {"columns": [...]}, "data": [{...row}]}
+      table: {
+               "props": {"columns": [{"field": "col_name", "header": "Display Name"}, ...]},
+               "data":  [{"col_name": value, ...}, ...]
+             }
+             IMPORTANT: columns MUST use "field"/"header" keys — NOT "key"/"label".
+             The "field" value must match the key used in each data row dict.
       chart: {"props": {"layout": {...}}, "data": [{...plotly trace}]}
   - Use the schema and sample rows you were given to write correct SQL.
   - OMIT the code block if you are not confident — the user falls back
@@ -248,6 +273,59 @@ def _format_history(history: Iterable[dict]) -> str:
     return "\n\n".join(lines) if lines else "(no prior messages)"
 
 
+_BACKEND_CONTEXT_GATHERING = """
+FIRST-TURN DATA CONTEXT GATHERING — ask only about DATA, not UI:
+
+You are the @backend data expert. When the user's request uses a vague business
+term that doesn't match any table or column in the schema, ask what they mean
+DATA-wise before answering. Do NOT ask about widget type or UI format — that is
+@frontend's job.
+
+Emit a CONTEXT QUESTIONS block with 2–3 questions focused on:
+- What metric / business concept they want (and which table/column it maps to)
+- Time period, filters, or grouping (e.g. "last 30 days", "by product")
+- Business rules for any calculation (e.g. "low stock = qty < 10?")
+
+Example:
+  CONTEXT QUESTIONS:
+    1. What do you mean by "inventory"? (current stock levels per product / quantity sold over time / reorder triggers / purchase order history)
+    2. Any filters — specific products, date range, or threshold? (all products / specific category / last 30 days)
+    3. How should "low stock" be defined? (fixed number like qty < 10 / percentage of average sales / you'll set thresholds later)
+
+Rules:
+- 2 questions minimum, 3 maximum.
+- Use inline (option A / option B) on every question where sensible options exist.
+- Do NOT ask about widget type, chart style, or UI layout — that is @frontend's scope.
+- After the block, continue with ASSUMPTIONS / ANSWER / EVIDENCE / NEXT STEPS.
+""".strip()
+
+
+_FRONTEND_CONTEXT_GATHERING = """
+FIRST-TURN UI CONTEXT GATHERING — ask only about UI, not data:
+
+You are the @frontend UI expert. When the user's request is vague about what
+kind of widget or view they need, ask what they mean UI-wise before answering.
+Do NOT ask about data tables, columns, or business logic — that is @backend's job.
+
+Emit a CONTEXT QUESTIONS block with 2–3 questions focused on:
+- Widget type and visual style (table, chart, number card, text alert)
+- What the user should SEE (columns, labels, chart axes, highlight rules)
+- Any interactivity (clickable rows, filter inputs, drill-down)
+
+Example:
+  CONTEXT QUESTIONS:
+    1. What kind of widget do you need? (table listing rows / bar chart / single number card / text alert)
+    2. Should any rows or values be highlighted? (flag low-stock items in red / highlight top sellers / no highlighting)
+    3. Do you need any filters or inputs on the widget? (a dropdown to filter by product / date range picker / no — just display)
+
+Rules:
+- 2 questions minimum, 3 maximum.
+- Use inline (option A / option B) on every question where sensible options exist.
+- Do NOT ask about source tables, SQL, or data availability — that is @backend's scope.
+- After the block, continue with ASSUMPTIONS / ANSWER / EVIDENCE / NEXT STEPS.
+""".strip()
+
+
 def build_agent_prompt(
     agent: str,
     user_prompt: str,
@@ -272,17 +350,29 @@ def build_agent_prompt(
     else:
         raise ValueError(f"unknown agent: {agent!r}")
 
+    # Inject domain-specific context-gathering when this is the agent's
+    # very first response in the conversation (no prior message from this
+    # agent exists yet AND only one user message has been sent so far).
+    # Checking `not history` is wrong — the opening user message is always
+    # in history by the time build_agent_prompt is called.
+    user_turns = [m for m in history if m.get("role") == "user"]
+    prior_responses = [m for m in history if m.get("role") == "assistant" and m.get("agent") == agent]
+    first_turn_block = ""
+    if len(user_turns) == 1 and not prior_responses:
+        gathering = _BACKEND_CONTEXT_GATHERING if agent == "backend" else _FRONTEND_CONTEXT_GATHERING
+        first_turn_block = f"\n{gathering}\n"
+
     parts = [
         system,
         "",
         context_block,
-        "",
+        first_turn_block,
         "=== CONVERSATION SO FAR ===",
         _format_history(history),
         "",
         "=== USER MESSAGE ===",
         user_prompt,
         "",
-        f"Respond as the {agent} expert. Plain English. No code blocks.",
+        f"Respond as the {agent} expert. Plain English.",
     ]
     return "\n".join(parts)
