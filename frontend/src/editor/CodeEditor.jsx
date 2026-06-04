@@ -59,6 +59,7 @@ export function CodeEditor({ screenId, widgetId }) {
   const [testOut, setTestOut] = useState(null)   // {ok, result, stdout, stderr} or null
   const [testing, setTesting] = useState(false)
   const saveRef = useRef(null)
+  const editorRef = useRef(null)
 
   // Load logic when the selected widget changes
   useEffect(() => {
@@ -78,6 +79,8 @@ export function CodeEditor({ screenId, widgetId }) {
         const s = body.logic_code || ''
         setCode(s)
         setOrigCode(s)
+        // Imperatively set Monaco's content — avoids controlled-mode re-render on every keystroke
+        editorRef.current?.getModel()?.setValue(s)
         setPhase('idle')
       })
       .catch((e) => {
@@ -145,6 +148,8 @@ export function CodeEditor({ screenId, widgetId }) {
   saveRef.current = save // always reach the latest save (closure-free Monaco binding)
 
   const handleMount = (editor, monaco) => {
+    editorRef.current = editor
+    editor.updateOptions({ accessibilitySupport: 'off' })
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       saveRef.current && saveRef.current()
     })
@@ -195,7 +200,6 @@ export function CodeEditor({ screenId, widgetId }) {
           height="100%"
           defaultLanguage="python"
           theme="vs-dark"
-          value={code}
           onChange={(v) => setCode(v || '')}
           onMount={handleMount}
           options={{
@@ -205,6 +209,7 @@ export function CodeEditor({ screenId, widgetId }) {
             tabSize: 4,
             insertSpaces: true,
             scrollBeyondLastLine: false,
+            accessibilitySupport: 'off',
           }}
         />
       </div>

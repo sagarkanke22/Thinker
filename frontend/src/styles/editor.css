@@ -73,7 +73,7 @@
   flex: 1 1 50%;
   border-bottom: 1px solid var(--border);
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .editor-preview {

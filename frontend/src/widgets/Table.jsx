@@ -128,7 +128,16 @@ export function Table({ config }) {
             </tr>
           ) : (
             data.map((row, i) => {
-              const rowStyle = (row && row._style) || {}
+              const HIGHLIGHT_COLORS = {
+                red:    { background: '#fee2e2', color: '#b91c1c' },
+                green:  { background: '#dcfce7', color: '#166534' },
+                yellow: { background: '#fef9c3', color: '#854d0e' },
+                blue:   { background: '#dbeafe', color: '#1e40af' },
+              }
+              const highlightStyle = row && row._highlight
+                ? (HIGHLIGHT_COLORS[row._highlight] || { background: row._highlight })
+                : {}
+              const rowStyle = { ...(row && row._style ? row._style : {}), ...highlightStyle }
               return (
                 <tr key={i}>
                   {columns.map((col) => (

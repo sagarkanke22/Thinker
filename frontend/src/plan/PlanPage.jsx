@@ -219,42 +219,61 @@ const HINT = {
   lineHeight: 1.7,
   padding: '12px 0',
 }
-const MSG = {
+// All agent cards share the same neutral dark background.
+// Identity comes from the colored left border + colored label, not bg tint.
+const MSG_CARD = {
   margin: '12px 0',
-  padding: '12px 16px',
   borderRadius: 10,
   fontSize: 14,
   lineHeight: 1.6,
-  whiteSpace: 'pre-wrap',
   wordBreak: 'break-word',
   color: '#c9d1d9',
+  background: '#161b22',
+  border: '1px solid #21262d',
+  overflow: 'hidden',
 }
 const MSG_USER = {
-  ...MSG,
-  background: '#1c2d3d',
-  border: '1px solid #1f3c5a',
+  ...MSG_CARD,
+  background: '#12203a',
+  border: '1px solid #1c3358',
   borderLeft: '3px solid #388bfd',
 }
 const MSG_BACKEND = {
-  ...MSG,
-  background: '#2a1f00',
-  border: '1px solid #3d2e00',
-  borderLeft: '3px solid #e3b341',
+  ...MSG_CARD,
+  background: '#15120a',       // warm amber tint — clearly @backend
+  border: '1px solid #2a2210',
+  borderLeft: '3px solid #d29922',
 }
 const MSG_FRONTEND = {
-  ...MSG,
-  background: '#0c2011',
-  border: '1px solid #1a3a25',
+  ...MSG_CARD,
+  background: '#0b150d',       // cool green tint — clearly @frontend
+  border: '1px solid #162118',
   borderLeft: '3px solid #3fb950',
 }
-const MSG_HEADER = {
+// Reuse for context question cards (purple accent)
+const MSG_CTX_Q_STYLE = {
+  ...MSG_CARD,
+  borderLeft: '3px solid #8957e5',
+}
+
+// Per-agent accent colors used in the header label
+const AGENT_ACCENT = { backend: '#d29922', frontend: '#3fb950' }
+
+// Header bar inside each agent card
+const MSG_HEADER_BAR = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '7px 14px',
+  background: '#0d1117',
+  borderBottom: '1px solid #21262d',
   fontSize: 10,
   fontWeight: 700,
   textTransform: 'uppercase',
   letterSpacing: 0.8,
-  marginBottom: 6,
-  color: '#8b949e',
 }
+// Content body inside the card
+const MSG_BODY = { padding: '12px 16px' }
 const ERR = { color: '#f85149', fontSize: 12, padding: '6px 0' }
 const INPUT_BAR = {
   borderTop: '1px solid #21262d',
@@ -396,14 +415,8 @@ const TASK_CTX_CHIP = {
   background: '#21262d', border: '1px solid #30363d', color: '#8b949e',
 }
 
-// Context questions special message style
-const MSG_CTX_Q = {
-  ...{ margin: '12px 0', padding: '12px 16px', borderRadius: 10, fontSize: 14,
-       lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#c9d1d9' },
-  background: '#1a1225',
-  border: '1px solid #3d2060',
-  borderLeft: '3px solid #8957e5',
-}
+// Alias — context question cards reuse the shared neutral style with purple accent
+const MSG_CTX_Q = MSG_CTX_Q_STYLE
 const CTX_Q_SECTION = {
   marginTop: 10, padding: '10px 12px',
   background: '#0d1117', borderRadius: 8,
@@ -526,8 +539,11 @@ async function streamSSEPost(url, body, onEvent) {
 
 // Returns true when an assistant message hit a wall — has a SOLUTION PLAN
 // or explicitly states impossibility in the ANSWER section.
+// A message that ALSO has a BUILD hook is not blocked — it proposed a
+// concrete solution and emitted buildable code.
 function isBlockedMessage(content) {
   if (!content) return false
+  if (parseBuildHook(content)) return false   // BUILD present → not blocked
   if (/SOLUTION PLAN\s*:/i.test(content)) return true
   const answerMatch = content.match(/ANSWER\s*:\s*\n?([\s\S]{0,500}?)(?=\n\s*[A-Z ]{4,}\s*:|$)/i)
   if (answerMatch) {
@@ -562,12 +578,13 @@ function buildResumeSummary(msgs) {
 // Extract numbered questions from a CONTEXT QUESTIONS block.
 function parseContextQuestions(content) {
   if (!content) return null
-  const match = content.match(/CONTEXT QUESTIONS\s*:\s*\n([\s\S]*?)(?=\n\s*(?:ASSUMPTIONS|ANSWER|EVIDENCE|NEXT STEPS)\s*:|\n\n\n|$)/i)
+  // Match "CONTEXT QUESTIONS:" with optional markdown bold (**) and whitespace variants
+  const match = content.match(/\**CONTEXT QUESTIONS\**\s*:\s*\n([\s\S]*?)(?=\n\s*\**(?:ASSUMPTIONS|ANSWER|EVIDENCE|NEXT STEPS|SOLUTION PLAN)\**\s*:|\n\n\n|$)/i)
   if (!match) return null
   const qs = match[1]
     .split('\n')
     .map(l => l.replace(/^\s*\d+[\.\)]\s*/, '').trim())
-    .filter(l => l.length > 8)
+    .filter(l => l.length > 8 && l.includes('?'))  // only real questions, not statements
   return qs.length ? qs : null
 }
 
@@ -575,7 +592,7 @@ function parseContextQuestions(content) {
 // (we render it as a styled card instead).
 function stripContextQuestions(content) {
   if (!content) return content
-  return content.replace(/CONTEXT QUESTIONS\s*:\s*\n[\s\S]*?(?=\n\s*(?:ASSUMPTIONS|ANSWER|EVIDENCE|NEXT STEPS)\s*:|\n\n\n|$)/i, '').trim()
+  return content.replace(/\**CONTEXT QUESTIONS\**\s*:\s*\n[\s\S]*?(?=\n\s*\**(?:ASSUMPTIONS|ANSWER|EVIDENCE|NEXT STEPS|SOLUTION PLAN)\**\s*:|\n\n\n|$)/i, '').trim()
 }
 
 // Build a structured task context summary from all messages in the conversation.
@@ -679,6 +696,157 @@ function splitMessageContent(content) {
     if (tail.trim()) segments.push({ type: 'text', text: tail })
   }
   return segments.length ? segments : [{ type: 'text', text: content }]
+}
+
+// ─── Structured text rendering ─────────────────────────────────────
+// Each named section (EVIDENCE, SOLUTION PLAN, NEXT STEPS, …) renders
+// as a distinct colored card. Prose before any header renders plainly.
+
+const NUM_ITEM_STYLE = {
+  display: 'flex', alignItems: 'flex-start', marginBottom: 7, lineHeight: 1.55,
+}
+const NUM_BADGE_STYLE = {
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  width: 18, height: 18, borderRadius: '50%',
+  background: '#21262d', border: '1px solid #30363d',
+  fontSize: 10, fontWeight: 700, color: '#8b949e',
+  flexShrink: 0, marginRight: 8, marginTop: 2,
+}
+const BULLET_ITEM_STYLE = {
+  display: 'flex', alignItems: 'flex-start', marginBottom: 5, lineHeight: 1.55,
+}
+
+// Per-section visual config: accent color, card background, border color
+const SECTION_CFG = {
+  'ASSUMPTIONS':          { color: '#8b949e', bg: '#161b22', border: '#30363d' },
+  'ANSWER':               { color: '#79c0ff', bg: '#0d1926', border: '#1c4172' },
+  'EVIDENCE':             { color: '#58a6ff', bg: '#0b1829', border: '#1461b5' },
+  'SOLUTION PLAN':        { color: '#e3b341', bg: '#1a1500', border: '#6d5100' },
+  'NEXT STEPS':           { color: '#3fb950', bg: '#0b1a0f', border: '#1a4a25' },
+  'NEXT STEP':            { color: '#3fb950', bg: '#0b1a0f', border: '#1a4a25' },
+  'CAPABILITY GAP CHECK': { color: '#d2a8ff', bg: '#140d22', border: '#4d2d8a' },
+  'READY TO BUILD':       { color: '#3fb950', bg: '#0b1a0f', border: '#1a4a25' },
+}
+const KNOWN_SECTIONS = new Set(Object.keys(SECTION_CFG)
+  .concat(['CONTEXT QUESTIONS', 'CLARIFYING QUESTIONS']))
+
+function renderInlineMd(text) {
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/)
+  if (parts.length === 1) return text
+  return parts.map((p, i) => {
+    if (p.startsWith('**') && p.endsWith('**'))
+      return <strong key={i}>{p.slice(2, -2)}</strong>
+    if (p.startsWith('`') && p.endsWith('`'))
+      return <code key={i} style={{ fontFamily: 'ui-monospace,monospace', fontSize: '0.88em',
+        background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 3 }}>{p.slice(1, -1)}</code>
+    return p
+  })
+}
+
+function renderLines(lines) {
+  const els = []
+  let k = 0
+  for (const line of lines) {
+    const t = line.trim()
+    if (!t) { els.push(<div key={k++} style={{ height: 4 }} />); continue }
+    if (t === '---') {
+      els.push(<hr key={k++} style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.07)', margin: '6px 0' }} />)
+      continue
+    }
+    const nm = t.match(/^(\d+)[.)]\s+(.+)/)
+    if (nm) {
+      els.push(
+        <div key={k++} style={NUM_ITEM_STYLE}>
+          <span style={NUM_BADGE_STYLE}>{nm[1]}</span>
+          <span style={{ flex: 1 }}>{renderInlineMd(nm[2])}</span>
+        </div>
+      )
+      continue
+    }
+    const bm = t.match(/^[-•*→]\s+(.+)/)
+    if (bm) {
+      const isGap = bm[1].includes('✗') || bm[1].includes('GAP') || bm[1].includes('CANNOT')
+      const isOk  = bm[1].includes('✓')
+      els.push(
+        <div key={k++} style={{ ...BULLET_ITEM_STYLE,
+          color: isGap ? '#f85149' : isOk ? '#3fb950' : '#c9d1d9' }}>
+          <span style={{ marginRight: 8, flexShrink: 0, color: isGap ? '#f85149' : isOk ? '#3fb950' : '#58a6ff' }}>
+            {isGap ? '✗' : isOk ? '✓' : '·'}
+          </span>
+          <span style={{ flex: 1 }}>{renderInlineMd(bm[1])}</span>
+        </div>
+      )
+      continue
+    }
+    els.push(<div key={k++} style={{ marginBottom: 3, lineHeight: 1.55 }}>{renderInlineMd(t)}</div>)
+  }
+  return <>{els}</>
+}
+
+function parseIntoSections(text) {
+  const lines = text.split('\n')
+  const sections = []
+  let name = null
+  let buf = []
+  for (const line of lines) {
+    const t = line.trim()
+    const hm = t.match(/^([A-Z][A-Z\s()]+[A-Z]):\s*$/)
+    const sname = hm ? hm[1].trim() : null
+    if (sname && KNOWN_SECTIONS.has(sname)) {
+      if (buf.length || name !== null) sections.push({ name, lines: buf })
+      name = sname
+      buf = []
+    } else {
+      buf.push(line)
+    }
+  }
+  if (buf.length || name !== null) sections.push({ name, lines: buf })
+  return sections
+}
+
+function StructuredText({ text }) {
+  if (!text) return null
+  const sections = parseIntoSections(text)
+  return (
+    <>
+      {sections.map((sec, i) => {
+        const cfg = SECTION_CFG[sec.name]
+        const hasContent = sec.lines.some(l => l.trim())
+        // Plain prose (before any header) — no card wrapper
+        if (!sec.name) {
+          return <div key={i}>{renderLines(sec.lines)}</div>
+        }
+        // Sections handled by the separate CTX form — skip prose render
+        if (sec.name === 'CONTEXT QUESTIONS' || sec.name === 'CLARIFYING QUESTIONS') return null
+        // Named section card
+        const accentColor = cfg ? cfg.color : '#6e7681'
+        const bgColor     = cfg ? cfg.bg    : '#161b22'
+        const borderColor = cfg ? cfg.border: '#30363d'
+        if (!hasContent) return null
+        return (
+          <div key={i} style={{
+            margin: '8px 0', borderRadius: 6, overflow: 'hidden',
+            border: `1px solid ${borderColor}`,
+            borderLeft: `3px solid ${accentColor}`,
+            background: bgColor,
+          }}>
+            <div style={{
+              padding: '4px 10px', fontSize: 10, fontWeight: 700,
+              textTransform: 'uppercase', letterSpacing: 0.8,
+              color: accentColor,
+              borderBottom: `1px solid ${borderColor}`,
+              background: `${bgColor}`,
+            }}>
+              {sec.name}
+            </div>
+            <div style={{ padding: '8px 12px', fontSize: 13 }}>
+              {renderLines(sec.lines)}
+            </div>
+          </div>
+        )
+      })}
+    </>
+  )
 }
 
 const CODE_BOX = {
@@ -1034,6 +1202,102 @@ function ContextForm({ questions, onSubmit, busy }) {
         disabled={!hasAnyAnswer || busy || submitted}
       >
         {submitted ? '✓ Sent' : 'Submit answers →'}
+      </button>
+    </div>
+  )
+}
+
+// Combined form shown when both @backend and @frontend have pending questions.
+// Renders sections per agent, one Submit collects everything.
+function CombinedContextForm({ sections, onSubmit, busy }) {
+  const [answers, setAnswers] = useState(() =>
+    sections.map(s => s.questions.map(() => ''))
+  )
+  const [submitted, setSubmitted] = useState(false)
+
+  const setAnswer = (si, qi, val) => setAnswers(prev => {
+    const next = prev.map(s => [...s])
+    next[si][qi] = val
+    return next
+  })
+
+  const hasAnyAnswer = answers.some(s => s.some(a => a.trim()))
+
+  const handleSubmit = () => {
+    const parts = sections.map((s, si) => {
+      const sectionAnswers = s.questions
+        .map((_, qi) => `${qi + 1}. ${answers[si][qi].trim() || '(not specified)'}`)
+        .join('\n')
+      return `@${s.agent}:\n${sectionAnswers}`
+    })
+    setSubmitted(true)
+    onSubmit(parts.join('\n\n'))
+  }
+
+  return (
+    <div style={CTX_Q_SECTION}>
+      <div style={CTX_Q_LABEL}>🔍 Help both agents — answer all questions then submit</div>
+      {sections.map((s, si) => (
+        <div key={si} style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: s.agent === 'backend' ? '#e36209' : '#1f6feb',
+            textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+            @{s.agent}
+          </div>
+          {s.questions.map((q, qi) => {
+            const inlineOpts = parseQuestionOptions(q)
+            const displayQ = inlineOpts ? stripQuestionOptions(q) : q
+            return (
+              <div key={qi} style={CTX_FORM_QUESTION}>
+                <div style={{ ...CTX_Q_ITEM, marginBottom: 6, alignItems: 'flex-start' }}>
+                  <span style={CTX_Q_NUM}>{qi + 1}</span>
+                  <span style={{ fontSize: 13, color: '#c9d1d9', flex: 1 }}>{displayQ}</span>
+                </div>
+                {inlineOpts ? (
+                  <>
+                    <div style={CTX_FORM_BTN_GROUP}>
+                      {inlineOpts.map(opt => (
+                        <button
+                          key={opt}
+                          style={answers[si][qi] === opt ? CTX_FORM_TYPE_BTN_ACTIVE : CTX_FORM_TYPE_BTN}
+                          onClick={() => setAnswer(si, qi, answers[si][qi] === opt ? '' : opt)}
+                          disabled={busy || submitted}
+                        >{opt}</button>
+                      ))}
+                    </div>
+                    <input
+                      type="text"
+                      style={{ ...CTX_FORM_INPUT, marginTop: 6, fontSize: 12, opacity: 0.75, borderStyle: 'dashed' }}
+                      value={inlineOpts.includes(answers[si][qi]) ? '' : answers[si][qi]}
+                      onChange={e => setAnswer(si, qi, e.target.value)}
+                      placeholder="or type your own answer…"
+                      disabled={busy || submitted}
+                    />
+                  </>
+                ) : (
+                  <input
+                    type="text"
+                    style={CTX_FORM_INPUT}
+                    value={answers[si][qi]}
+                    onChange={e => setAnswer(si, qi, e.target.value)}
+                    placeholder="Your answer…"
+                    disabled={busy || submitted}
+                  />
+                )}
+              </div>
+            )
+          })}
+        </div>
+      ))}
+      <button
+        style={{
+          ...CTX_FORM_SUBMIT,
+          opacity: (!hasAnyAnswer || submitted || busy) ? 0.45 : 1,
+          cursor: (!hasAnyAnswer || submitted || busy) ? 'default' : 'pointer',
+        }}
+        onClick={handleSubmit}
+        disabled={!hasAnyAnswer || busy || submitted}
+      >
+        {submitted ? '✓ Sent' : 'Submit all answers →'}
       </button>
     </div>
   )
@@ -1429,8 +1693,11 @@ export default function PlanPage() {
     if (!text || busy) return
     // On the very first turn (no history yet), always call both agents so
     // @backend can ask about data and @frontend can ask about UI in parallel.
+    // When the combined form submits answers it prefixes sections with @backend:
+    // and @frontend: — detect both and route to both agents.
     // After that, respect explicit @mentions or fall back to @backend only.
-    const agents = messages.length === 0 ? AGENTS : detectAgents(text)
+    const isCombinedAnswer = text.includes('@backend:') && text.includes('@frontend:')
+    const agents = messages.length === 0 || isCombinedAnswer ? AGENTS : detectAgents(text)
     const cleanPrompt = stripMentions(text) || text
 
     const userMsg = { role: 'user', content: text }
@@ -1444,8 +1711,33 @@ export default function PlanPage() {
     // doesn't fill with empties.
     const id = await ensureActiveId(text)
 
+    // Run agents sequentially, but gate @frontend if @backend is still
+    // asking schema questions. @frontend analysis depends on confirmed data;
+    // running it before schema is resolved produces a confusing premature block.
+    let frontendDeferred = false
     for (const agent of agents) {
       snapshot = await askAgent(agent, cleanPrompt, snapshot)
+      if (agent === 'backend' && agents.includes('frontend')) {
+        if (parseContextQuestions(snapshot[snapshot.length - 1].content)) {
+          frontendDeferred = true
+          break  // @frontend will auto-join once schema is resolved
+        }
+      }
+    }
+
+    // Auto-trigger @frontend on the turn @backend resolves its schema questions
+    // (no new CONTEXT QUESTIONS in response) if @frontend hasn't spoken yet.
+    if (!frontendDeferred && !agents.includes('frontend')) {
+      const hadPending = messages.some(
+        m => m.role === 'assistant' && m.agent === 'backend' && parseContextQuestions(m.content)
+      )
+      const frontendSpoke = messages.some(m => m.role === 'assistant' && m.agent === 'frontend')
+      const latestBackend = snapshot.slice().reverse().find(
+        m => m.role === 'assistant' && m.agent === 'backend'
+      )
+      if (hadPending && !frontendSpoke && latestBackend && !parseContextQuestions(latestBackend.content)) {
+        snapshot = await askAgent('frontend', cleanPrompt, snapshot)
+      }
     }
 
     // Persist + refresh sidebar (so newest moves to top + new title shows)
@@ -1558,6 +1850,10 @@ export default function PlanPage() {
             // Find the index of the LATEST assistant message with a BUILD:
             // hook — only that one shows the Build button so iteration
             // stays clean. Older synthesis attempts read as history only.
+            // Exception: suppress Build button if @frontend has a pending
+            // CONTEXT QUESTIONS after the build message — the user must
+            // answer the architecture question first, otherwise the build
+            // would be wired incorrectly.
             let lastBuildIdx = -1
             for (let k = messages.length - 1; k >= 0; k--) {
               if (
@@ -1567,6 +1863,17 @@ export default function PlanPage() {
                 lastBuildIdx = k
                 break
               }
+            }
+            // Check if @frontend has a pending (unanswered) CONTEXT QUESTIONS
+            // after the build message. If so, hold the Build button.
+            if (lastBuildIdx !== -1) {
+              const frontendPendingAfterBuild = messages.some((m, idx) =>
+                idx > lastBuildIdx &&
+                m.role === 'assistant' &&
+                m.agent === 'frontend' &&
+                parseContextQuestions(m.content)
+              )
+              if (frontendPendingAfterBuild) lastBuildIdx = -1
             }
             // Find all assistant messages with context questions that are
             // AFTER the last user message — those are "pending" and get the
@@ -1581,6 +1888,19 @@ export default function PlanPage() {
                 ctxQFormIndices.add(k)
               }
             }
+            // When multiple agents both have pending question forms in the same
+            // round, combine them into one form rendered on the LAST pending
+            // message only. Earlier pending messages show nothing (no duplicate
+            // forms, no stale Submit buttons).
+            const ctxQFormArray = [...ctxQFormIndices]
+            const combinedFormIdx = ctxQFormArray.length > 1
+              ? ctxQFormArray[ctxQFormArray.length - 1]
+              : null
+            // Build combined questions list: [{agent, questions}]
+            const combinedSections = ctxQFormArray.map(idx => ({
+              agent: messages[idx].agent,
+              questions: parseContextQuestions(messages[idx].content),
+            }))
             return messages.map((m, i) => {
             const style =
               m.role === 'user'
@@ -1611,32 +1931,52 @@ export default function PlanPage() {
             }
             return (
               <div key={i} style={style}>
-                <div style={MSG_HEADER}>
-                  {label}
-                  {m.role === 'assistant' && isBlockedMessage(m.content) && (
-                    <span style={BLOCKED_BADGE}>⚠ blocked</span>
-                  )}
-                </div>
-                <div>
+                {m.role === 'assistant' ? (
+                  <div style={{
+                    ...MSG_HEADER_BAR,
+                    color: AGENT_ACCENT[m.agent] || '#8b949e',
+                    background: m.agent === 'backend' ? '#1f1a08' : m.agent === 'frontend' ? '#0a1a0d' : '#0d1117',
+                    borderBottom: `1px solid ${m.agent === 'backend' ? '#2e2508' : m.agent === 'frontend' ? '#102016' : '#21262d'}`,
+                  }}>
+                    <span>@{m.agent}</span>
+                    {isBlockedMessage(m.content) && (
+                      <span style={BLOCKED_BADGE}>⚠ blocked</span>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ ...MSG_HEADER_BAR, color: '#388bfd', background: '#0d1926', borderBottom: '1px solid #1c3358' }}>you</div>
+                )}
+                <div style={m.role === 'user' ? undefined : MSG_BODY}>
                   {displayContent
                     ? splitMessageContent(displayContent).map((seg, j) =>
                         seg.type === 'code' ? (
                           <CodeBlock key={j} lang={seg.lang} code={seg.code} />
                         ) : (
-                          <div key={j} style={{ whiteSpace: 'pre-wrap' }}>
-                            {seg.text}
-                          </div>
+                          <StructuredText key={j} text={seg.text} />
                         ),
                       )
                     : m.role === 'assistant'
                     ? '…thinking'
                     : ''}
                   {ctxQuestions && ctxQFormIndices.has(i) ? (
-                    <ContextForm
-                      questions={ctxQuestions}
-                      onSubmit={(text) => send(text)}
-                      busy={busy}
-                    />
+                    combinedFormIdx !== null && i === combinedFormIdx ? (
+                      // Combined form: all pending agents' questions in one form
+                      <CombinedContextForm
+                        sections={combinedSections}
+                        onSubmit={(text) => send(text)}
+                        busy={busy}
+                      />
+                    ) : combinedFormIdx !== null ? (
+                      // Earlier pending form — hidden, replaced by combined form above
+                      null
+                    ) : (
+                      // Single agent — normal form
+                      <ContextForm
+                        questions={ctxQuestions}
+                        onSubmit={(text) => send(text)}
+                        busy={busy}
+                      />
+                    )
                   ) : (
                     <ContextQuestionsCard questions={ctxQuestions} />
                   )}

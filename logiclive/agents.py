@@ -20,48 +20,163 @@ from sqlalchemy.orm import Session
 from logiclive.ai import get_db_schema_text, get_sample_rows_text
 
 
-# Frontend capabilities — written for AI consumption, not for stamping defaults.
-# Each entry tells the agent what the widget renders, what props it accepts,
-# and the rough shape of the data the logic_code is expected to return.
-FRONTEND_CAPABILITIES = """
-AVAILABLE WIDGET TYPES (all server-rendered via Python logic_code):
+# Structured widget capability registry.
+# Format per widget:
+#   CAN ✓   — verified working in current code (safe to use in BUILD)
+#   CAN ⚠   — documented but NOT verified; agent must warn user to test first
+#   CANNOT  — hard limit; always emit SOLUTION PLAN if user asks for this
+#   WIRING  — how this widget talks to siblings
+#   WORKAROUNDS — what to suggest when a CANNOT is hit
+#
+# Rule: only promote ⚠ → ✓ after manually verifying the feature works end-to-end.
+# When generating code that uses a ⚠ feature, always emit a VERIFY step in NEXT STEPS.
+WIDGET_REGISTRY = """
+WIDGET REGISTRY — check every user requirement against CAN/CANNOT before BUILD:
 
-text
-  Renders an HTML text node. props.tag = 'p' | 'h1' | 'h2' | 'span'.
-  logic returns: {"children": "the displayed string"}
+STATUS KEY:
+  ✓  = verified working in current codebase — safe to generate code for
+  ⚠  = documented but not end-to-end verified — generate code AND emit a
+       VERIFY step in NEXT STEPS: "Test this feature after build; if it doesn't
+       work, see the SOLUTION PLAN below."
 
-input
-  Single-line input. props.kind = 'text' | 'number' | 'date'. props.placeholder.
-  logic returns: {"props": {"value": initial_value}}
+widget: text
+  RETURN SHAPE: {"children": "string"}
+  CAN:
+    ✓ display any computed or static string
+    ✓ render HTML tags: p / h1 / h2 / span (set via props.tag)
+    ✓ re-render after a sibling input changes (input value arrives in params)
+    ✓ re-render after a sibling button fires (button triggers full screen re-render)
+    ✓ show post-action status by querying the DB for the latest result row
+  CANNOT:
+    - display images or rich HTML
+    - auto-update without a user action (no polling, no push)
+  WIRING: receives sibling input values in params on every keystroke
 
-button
-  Click target. props.label is the button text.
-  logic returns: nothing for /render; used as an /action trigger.
+widget: input
+  RETURN SHAPE: {"props": {"value": initial_value}}
+  props.kind = 'text' | 'number' | 'date'
+  CAN:
+    ✓ capture a single text / number / date value
+    ✓ pass its current value as a params key to ALL sibling widgets on change
+    ✓ show a placeholder label
+  CANNOT:
+    - be a dropdown or multi-select (only free-text / number / date)
+    - validate input format or enforce ranges
+    - trigger a button action directly
+  WIRING: onChange → all sibling widgets re-render with input value in params
 
-table
-  Tabular grid. props.columns = [{"field": "col_name", "header": "Display Name"}].
-  CRITICAL: columns use "field" and "header" keys — never "key" or "label".
-  The "field" value must exactly match the key in each data row dict.
-  logic returns: {"props": {"columns": [{"field": "product", "header": "Product"}, ...]},
-                  "data": [{"product": "Coke", ...}, ...]}
+widget: button
+  RETURN SHAPE: {"children": "status string"} — but this is DISCARDED (see CANNOT)
+  props.label sets the button text
+  CAN:
+    ✓ fire POST /action on click → runs logic_code in sandbox
+    ✓ trigger a full re-render of all sibling widgets after the action
+    ✓ show an inline error message if the action fails
+  CANNOT:
+    - display its own action result — Button.jsx discards the return value
+    - receive sibling input widget values — Button.jsx sends params:{} always
+    - be triggered programmatically (user click only)
+  WIRING: after click → all siblings re-render (use this to surface fresh DB data)
+  WORKAROUNDS:
+    - GAP "show action result": add a text widget that queries the DB for the
+      latest row written by the action (e.g. SELECT ... ORDER BY id DESC LIMIT 1)
+    - GAP "pass input value to action": note in SOLUTION PLAN that this requires
+      a developer to update Button.jsx to collect sibling input values and pass
+      them as params; workaround is to read the input widget's DB-stored value
+      inside the action's logic_code
 
-chart
-  Plotly chart. ANY plotly trace type is supported (bar, line, scatter, pie,
-  heatmap, etc) — set the type per-trace in the data array.
-  props.layout is the full Plotly layout object.
-  logic returns: {"props": {"layout": {...}}, "data": [{plotly trace}, ...]}
+widget: table
+  RETURN SHAPE: {"props": {"columns": [{"field": "col_name", "header": "Display Name"}]},
+                 "data": [{"col_name": value, ...}]}
+  CRITICAL: columns MUST use "field"/"header" keys — never "key"/"label"
+  CAN:
+    ✓ display any set of columns from DB query results
+    ✓ row-level highlighting via _highlight key: "red"|"green"|"yellow"|"blue"
+      (maps to soft background + matching text colour — verified in Table.jsx)
+    ✓ re-render on sibling input change (filter value arrives in params)
+  CANNOT:
+    - inline editing of cells
+    - column-level click events or sorting
+    - pagination (all rows rendered at once)
+  WIRING: receives sibling input values in params; use params.get("key") to filter SQL
 
-What you CANNOT do today:
-- Drag-and-drop layout (widgets stack vertically by default)
-- Multi-page wizards (one screen at a time)
-- Real-time push updates (logic re-runs on /render call only)
-- Forms beyond a single input (composite forms = multiple input widgets)
-- File upload widgets
-- Maps (no map widget type registered)
+widget: chart
+  RETURN SHAPE: {"props": {"layout": {...plotly layout}}, "data": [{...plotly trace}]}
+  CAN:
+    ✓ any Plotly trace type: bar / line / scatter / pie / heatmap / area
+    ✓ multiple traces overlaid (e.g. bars + reference line as scatter)
+    ✓ custom layout: title, axis labels, colors, legend
+    ✓ re-render on sibling input change
+  CANNOT:
+    - interactive drill-down clicks (no click event back to backend)
+    - real-time streaming / auto-refresh
+    - map / geo / choropleth charts (no geo widget registered)
+  WIRING: receives sibling input values in params; use params.get("key") to filter SQL
 
-Adding a new widget type requires a frontend code change (new renderer in
-src/widgets/<Type>.jsx + add to widgets_registry.KNOWN_TYPES). The AI cannot
-do this — it requires a developer.
+SCREEN-LEVEL CONSTRAINTS:
+  - Widgets stack vertically — no horizontal side-by-side layout without developer change
+  - One screen at a time — no multi-page wizards
+  - No file upload widget type
+  - Adding a new widget type = developer change (new JSX renderer + registry entry)
+""".strip()
+
+
+# Gap detection protocol injected into the frontend agent prompt.
+# The agent runs this checklist before every BUILD to catch unsupported requirements.
+_FRONTEND_GAP_CHECK = """
+CAPABILITY GAP CHECK — run this automatically before every BUILD response:
+
+Step 1 — Extract requirements from the user's request as a checklist:
+  For each thing the user wants to SEE or DO, write it as one line:
+  REQ-1: [what the widget must display / do / react to]
+  REQ-2: ...
+
+Step 2 — Match each requirement against WIDGET REGISTRY CAN/CANNOT:
+  For each REQ:
+    → Find the widget type being proposed.
+    → Does a CAN ✓ entry satisfy this REQ?   YES = verified, safe to BUILD.
+    → Does a CAN ⚠ entry satisfy this REQ?   YES = generate code BUT add
+      a VERIFY step to NEXT STEPS: "After build, test [feature] manually.
+      If it doesn't work, see SOLUTION PLAN below."
+    → Does the CANNOT list block it?          YES = GAP. Document it.
+    → No CAN entry matches at all?            TREAT AS GAP.
+
+Step 3 — For each GAP found:
+  a. Check the widget's WORKAROUNDS section. Is there a workaround?
+     YES → add a SOLUTION PLAN step describing the workaround.
+           Still emit BUILD: — the widget is buildable with the workaround.
+     NO  → add a SOLUTION PLAN step saying "developer change required:
+           open the widget's JSX file, add support for this feature,
+           then update the WIDGET REGISTRY ✓ entry."
+           Do NOT emit BUILD: for this requirement until the gap is resolved.
+
+  b. Always surface every gap in NEXT STEPS — never silently emit a BUILD:
+     for a widget that will not behave as the user expects.
+
+  c. IMPLEMENTATION MISMATCH — if the user reports that a ✓ feature is not
+     working (e.g. "color is not showing"), immediately treat it as a
+     registry/implementation mismatch and emit a SOLUTION PLAN:
+       1. Check the widget's JSX file for the feature implementation
+       2. If missing: add the implementation + update registry status
+       3. If present but wrong: fix the logic + keep registry status
+
+EXAMPLE — button needs to pass input value to action:
+  REQ-1: Button fires pipeline trigger
+  REQ-2: Button receives threshold from input widget
+  → REQ-1: button.CAN "fire /action on click" ✓
+  → REQ-2: button.CANNOT "receive sibling input values" ✗ GAP
+  → WORKAROUND: "developer change required to Button.jsx"
+  → SOLUTION PLAN step: describe the Button.jsx params fix
+  → NEXT STEPS: note the gap explicitly
+  → Still emit BUILD: (widget is useful even with this gap)
+
+EXAMPLE — button action result must appear on screen:
+  REQ: Show "Pipeline triggered — N products" message after click
+  → button.CANNOT "display its own action result" ✗ GAP
+  → WORKAROUND: add a text widget that queries DB for latest action row
+  → SOLUTION PLAN: "Add text widget text.pipeline_status that reads
+    SELECT * FROM supply_plans ORDER BY id DESC LIMIT 1"
+  → Emit BUILD: for both the button AND the text widget
 """.strip()
 
 
@@ -237,6 +352,32 @@ is figuring out what DATA is available before they build a widget.
 Your domain: the DB schema and sample rows shown in the context block.
 Cite as [From <table>.<column>], [From <table> schema], or [From sample row N].
 
+CODE DRAFT RULE — params keys are a FRONTEND concern:
+
+  Your code draft handles SQL and DB logic. The param key used in
+  `params.get(...)` depends on the input widget's ID — which is
+  @frontend's decision, not yours.
+
+  TWO CASES:
+
+  Case 1 — @frontend has already spoken in this conversation and confirmed
+  an input widget ID (e.g. "input.product_id" → params key is "product_id"):
+    → Use the confirmed key exactly. Cite it: # param key confirmed by @frontend
+
+  Case 2 — @frontend has NOT yet spoken (you are running before or without
+  @frontend):
+    → Use a clearly named placeholder: INPUT_PARAM_KEY
+    → Add a comment in the code:  # TODO: replace INPUT_PARAM_KEY with the
+      actual input widget ID once @frontend confirms it (e.g. "product_id")
+    → Do NOT silently guess a key and hardcode it without flagging it.
+
+CONTEXT QUESTIONS RULE:
+
+  When you do not have enough information to write SQL, emit CONTEXT QUESTIONS
+  only. Do NOT simultaneously emit a SOLUTION PLAN proposing schema changes —
+  that creates two conflicting tracks. Resolve the questions first; surface the
+  schema gap in SOLUTION PLAN only after the user's answers confirm the gap exists.
+
 {_AGENT_DISCIPLINE}
 """.strip()
 
@@ -246,9 +387,40 @@ You are LogicLive's FRONTEND UI EXPERT in the /plan discovery chat. The user
 is figuring out what UI COMPONENTS and VISUALIZATIONS are available before
 they build a widget.
 
-Your domain: the widget capabilities shown in the context block.
-Cite as [From <widget-type> widget], [From <widget-type>.<prop>], or
-[From "What you CANNOT do" section] when answering about limits.
+Your domain: the widget capabilities shown in the WIDGET REGISTRY context block.
+Cite as [From <widget-type>.CAN], [From <widget-type>.CANNOT], or
+[From <widget-type>.WORKAROUNDS] when answering about limits or gaps.
+
+Before every BUILD response, run the CAPABILITY GAP CHECK PROTOCOL from the
+context block. Every gap found MUST appear in SOLUTION PLAN + NEXT STEPS.
+Never emit a BUILD: for a widget that will silently not work as the user expects.
+
+ARCHITECTURE QUESTIONS — emit these exactly like @backend emits CONTEXT QUESTIONS:
+
+  Whenever you encounter a gap that has TWO OR MORE workable paths (e.g. "use
+  the workaround today" vs "fix the code first"), you MUST ask the user to choose
+  before emitting BUILD. Do NOT bury the decision in NEXT STEPS prose — surface
+  it as a CONTEXT QUESTIONS block so the user sees it as a clickable form, not
+  a wall of text.
+
+  Format (mirrors @backend's CONTEXT QUESTIONS exactly):
+
+    CONTEXT QUESTIONS:
+      1. <decision question> (option A — description / option B — description / option C if applicable)
+      2. <second decision if needed> (option A / option B)
+
+  Rules:
+    - One question per real decision point. Never ask about things already clear.
+    - Always include inline (opt A / opt B) choices so the user can click instead of type.
+    - Place CONTEXT QUESTIONS AFTER EVIDENCE and BEFORE NEXT STEPS.
+    - Once the user answers the CONTEXT QUESTIONS, skip the block and go straight
+      to BUILD with the chosen approach.
+
+  Example of a well-formed architecture question:
+    CONTEXT QUESTIONS:
+      1. How should the table update when a product ID is typed?
+         (live-filter on every keystroke — no button needed, works today /
+          explicit button click — requires a developer to patch Button.jsx first)
 
 {_AGENT_DISCIPLINE}
 """.strip()
@@ -276,53 +448,111 @@ def _format_history(history: Iterable[dict]) -> str:
 _BACKEND_CONTEXT_GATHERING = """
 FIRST-TURN DATA CONTEXT GATHERING — ask only about DATA, not UI:
 
-You are the @backend data expert. When the user's request uses a vague business
-term that doesn't match any table or column in the schema, ask what they mean
-DATA-wise before answering. Do NOT ask about widget type or UI format — that is
-@frontend's job.
+You are the @backend data expert. Apply this single test before answering:
 
-Emit a CONTEXT QUESTIONS block with 2–3 questions focused on:
-- What metric / business concept they want (and which table/column it maps to)
-- Time period, filters, or grouping (e.g. "last 30 days", "by product")
-- Business rules for any calculation (e.g. "low stock = qty < 10?")
+  "Can I write correct, complete, unambiguous SQL RIGHT NOW without guessing?"
 
-Example:
+  YES → Skip the CONTEXT QUESTIONS block entirely. Go straight to ASSUMPTIONS.
+  NO  → Ask exactly the questions whose answers are missing. Nothing more.
+
+To write correct SQL you need to know — for each piece that is NOT already
+explicit in the user's message:
+
+  WHAT    : Which table + column? What calculation? (sum / count / avg / latest)
+            Any formula or business rule? (e.g. margin = revenue - cost)
+
+  SCOPE   : What date range or time period?
+            Any filters — product, category, region, status?
+
+  GROUPING: Group by what? Sorted by what, which direction?
+            Top N rows, or all rows?
+
+  JOINS   : If multiple concepts — which tables, and how do they relate?
+
+Ask one question per gap. Stop when the gaps are covered.
+If a request is already specific enough to write the SQL, ask nothing.
+
+Use inline options (option A / option B / option C) on every question
+where sensible defaults exist. This lets the user click instead of type.
+
+Example (vague request — 4 gaps → 4 questions):
   CONTEXT QUESTIONS:
-    1. What do you mean by "inventory"? (current stock levels per product / quantity sold over time / reorder triggers / purchase order history)
-    2. Any filters — specific products, date range, or threshold? (all products / specific category / last 30 days)
-    3. How should "low stock" be defined? (fixed number like qty < 10 / percentage of average sales / you'll set thresholds later)
+    1. What does "revenue" mean? (sum of all orders / net after refunds / completed orders only)
+    2. What time period? (this calendar month / last 30 days / last 7 days / all time)
+    3. Group by what? (by product / by category / by date / no grouping — just a total)
+    4. Any product or category filters? (all / specific category — I'll type it / top 10 only)
 
-Rules:
-- 2 questions minimum, 3 maximum.
-- Use inline (option A / option B) on every question where sensible options exist.
+Example (specific request — 0 gaps → no CONTEXT QUESTIONS block at all):
+  User says: "Sum of orders.revenue grouped by orders.product for June 2026,
+              sorted by revenue descending, top 5 only."
+  → No questions needed. Go straight to ASSUMPTIONS.
+
+STRICT RULES FOR THE CONTEXT QUESTIONS BLOCK:
+- Every numbered item MUST be a question ending with a `?` and options in (A / B / C) form.
+- NEVER include statements, notes, or "I'll hold off" lines inside the block.
+  BAD:  3. The term is ambiguous so I need more info.
+  GOOD: 3. What do you mean by "X"? (option A / option B / type your own)
+- Ask ALL unclear questions NOW in one shot. Never say "I'll ask more later."
+  Deferring questions forces extra round-trips. One complete set now is always better.
+- Every question must map to a specific piece of SQL that would be wrong without its answer.
 - Do NOT ask about widget type, chart style, or UI layout — that is @frontend's scope.
-- After the block, continue with ASSUMPTIONS / ANSWER / EVIDENCE / NEXT STEPS.
+- After the block (or immediately if no block), continue with ASSUMPTIONS / ANSWER / EVIDENCE / NEXT STEPS.
 """.strip()
 
 
 _FRONTEND_CONTEXT_GATHERING = """
 FIRST-TURN UI CONTEXT GATHERING — ask only about UI, not data:
 
-You are the @frontend UI expert. When the user's request is vague about what
-kind of widget or view they need, ask what they mean UI-wise before answering.
-Do NOT ask about data tables, columns, or business logic — that is @backend's job.
+You are the @frontend UI expert. Apply this single test before answering:
 
-Emit a CONTEXT QUESTIONS block with 2–3 questions focused on:
-- Widget type and visual style (table, chart, number card, text alert)
-- What the user should SEE (columns, labels, chart axes, highlight rules)
-- Any interactivity (clickable rows, filter inputs, drill-down)
+  "Can I write a complete, correct widget spec RIGHT NOW without guessing?"
 
-Example:
+  YES → Skip the CONTEXT QUESTIONS block entirely. Go straight to ASSUMPTIONS.
+  NO  → Ask every unclear question NOW in one shot. Do not defer any question to a later turn.
+
+To specify the widget completely you need to know — for each piece that is NOT
+already explicit in the user's message:
+
+  TYPE    : Table / bar chart / line chart / pie / scatter / KPI text / input / button?
+
+  DISPLAY : Table → which columns, in what order?
+            Chart → what is X-axis, Y-axis, each series label?
+            KPI   → what is the label, what number, what unit?
+
+  VISUALS : Any row/bar/value highlighting? What condition triggers it?
+            Number formatting? (plain / currency / percentage / rounded)
+
+  INPUTS  : Does this widget need a filter input sitting above it?
+            (date picker / dropdown / text search / nothing)
+
+Ask one question per gap. Ask ALL gaps in this single response.
+If a request already specifies the widget type, columns, and display rules, ask nothing.
+
+Use inline options (option A / option B / option C) on every question
+where sensible defaults exist. This lets the user click instead of type.
+
+Example (vague request — 4 gaps → 4 questions):
   CONTEXT QUESTIONS:
-    1. What kind of widget do you need? (table listing rows / bar chart / single number card / text alert)
-    2. Should any rows or values be highlighted? (flag low-stock items in red / highlight top sellers / no highlighting)
-    3. Do you need any filters or inputs on the widget? (a dropdown to filter by product / date range picker / no — just display)
+    1. What type of widget? (bar chart / table with rows / single KPI number / line chart over time)
+    2. Which columns should be visible? (product + revenue / product + qty + revenue / all columns)
+    3. Should any row or value be highlighted? (top revenue in green / nothing / items below threshold in red)
+    4. Do you need a filter input above this widget? (date range picker / product dropdown / no filter)
 
-Rules:
-- 2 questions minimum, 3 maximum.
-- Use inline (option A / option B) on every question where sensible options exist.
+Example (specific request — 0 gaps → no CONTEXT QUESTIONS block at all):
+  User says: "Bar chart, X-axis = product name, Y-axis = total revenue,
+              no highlighting, no filter input needed."
+  → No questions needed. Go straight to ASSUMPTIONS.
+
+STRICT RULES FOR THE CONTEXT QUESTIONS BLOCK:
+- Every numbered item MUST be a question ending with a `?` and options in (A / B / C) form.
+- NEVER include statements, notes, or "I'll hold off" lines inside the block.
+  BAD:  3. I'll hold off on layout questions until I know the shape.
+  GOOD: 3. How should the data be laid out? (single column / two columns side by side / full-width)
+- Ask ALL unclear questions NOW in one shot. Never say "I'll ask more later" or "I'll hold off."
+  Deferring questions forces extra round-trips. One complete set now is always better.
+- Every question must map to a specific part of the widget spec that would be wrong without its answer.
 - Do NOT ask about source tables, SQL, or data availability — that is @backend's scope.
-- After the block, continue with ASSUMPTIONS / ANSWER / EVIDENCE / NEXT STEPS.
+- After the block (or immediately if no block), continue with ASSUMPTIONS / ANSWER / EVIDENCE / NEXT STEPS.
 """.strip()
 
 
@@ -344,21 +574,27 @@ def build_agent_prompt(
     elif agent == "frontend":
         system = FRONTEND_SYSTEM
         context_block = (
-            "=== WIDGET CAPABILITIES ===\n"
-            f"{FRONTEND_CAPABILITIES}"
+            "=== WIDGET REGISTRY ===\n"
+            f"{WIDGET_REGISTRY}\n\n"
+            "=== CAPABILITY GAP CHECK PROTOCOL ===\n"
+            f"{_FRONTEND_GAP_CHECK}"
         )
     else:
         raise ValueError(f"unknown agent: {agent!r}")
 
-    # Inject domain-specific context-gathering when this is the agent's
-    # very first response in the conversation (no prior message from this
-    # agent exists yet AND only one user message has been sent so far).
-    # Checking `not history` is wrong — the opening user message is always
-    # in history by the time build_agent_prompt is called.
+    # Inject context-gathering whenever this agent hasn't yet answered the
+    # LATEST user message. This covers both first-turn AND resumed/multi-turn
+    # conversations where a new vague question is asked.
+    #
+    # Logic: count user turns vs this agent's prior responses. If the user has
+    # sent more messages than this agent has answered, this is a new unanswered
+    # turn — inject the gathering block so the agent can decide whether to ask
+    # clarifying questions or skip them (the gathering prompt itself says to
+    # skip if the request is already specific enough).
     user_turns = [m for m in history if m.get("role") == "user"]
     prior_responses = [m for m in history if m.get("role") == "assistant" and m.get("agent") == agent]
     first_turn_block = ""
-    if len(user_turns) == 1 and not prior_responses:
+    if len(user_turns) > len(prior_responses):
         gathering = _BACKEND_CONTEXT_GATHERING if agent == "backend" else _FRONTEND_CONTEXT_GATHERING
         first_turn_block = f"\n{gathering}\n"
 
