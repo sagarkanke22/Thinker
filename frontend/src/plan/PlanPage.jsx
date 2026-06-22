@@ -1020,6 +1020,173 @@ function extractStepsData(messages) {
   }
 }
 
+// ─── Plan snapshot parsers ─────────────────────────────────────────
+// Extract structured data from the box-drawing PLAN SNAPSHOT / DATA SNAPSHOT
+// blocks emitted by agents at the end of their summary-phase responses.
+
+function parsePlanSnapshot(content) {
+  if (!content) return null
+  const start = content.indexOf('PLAN SNAPSHOT')
+  if (start === -1) return null
+  const blockStart = content.lastIndexOf('┌', start)
+  if (blockStart === -1) return null
+  const blockEnd = content.indexOf('└', start)
+  if (blockEnd === -1) return null
+  const block = content.slice(blockStart, blockEnd)
+  const lines = block.split('\n').map(l => l.replace(/^│\s?/, '').replace(/\s*│\s*$/, '').trimEnd())
+
+  const result = { building: null, screen: null, widgets: [], prerequisites: [], status: null }
+  let section = null
+
+  for (const line of lines) {
+    const t = line.trim()
+    if (!t || t.startsWith('┌') || t.startsWith('PLAN SNAPSHOT')) continue
+    const b = t.match(/^Building:\s*(.+)/i); if (b) { result.building = b[1].trim(); continue }
+    const s = t.match(/^Screen:\s*(.+)/i);   if (s) { result.screen   = s[1].trim(); continue }
+    if (/WIDGET LAYOUT/i.test(t))    { section = 'widgets'; continue }
+    if (/PREREQUISITES/i.test(t))    { section = 'prereqs'; continue }
+    const st = t.match(/^STATUS:\s*(.+)/i)
+    if (st) { result.status = st[1].trim(); section = null; continue }
+
+    if (section === 'widgets') {
+      const wm = t.match(/\[(\w+)\]\s+([\w.]+)\s*[—\-–]\s*([^✓⚠✗]+?)\s*(✓|⚠|✗)/)
+      if (wm) result.widgets.push({ type: wm[1], id: wm[2], purpose: wm[3].trim(), status: wm[4] })
+    }
+    if (section === 'prereqs') {
+      const pm = t.match(/^□\s+(.+)/); if (pm) result.prerequisites.push(pm[1].trim())
+    }
+  }
+  return (result.building || result.widgets.length || result.prerequisites.length) ? result : null
+}
+
+function parseDataSnapshot(content) {
+  if (!content) return null
+  const start = content.indexOf('DATA SNAPSHOT')
+  if (start === -1) return null
+  const blockStart = content.lastIndexOf('┌', start)
+  if (blockStart === -1) return null
+  const blockEnd = content.indexOf('└', start)
+  if (blockEnd === -1) return null
+  const block = content.slice(blockStart, blockEnd)
+  const lines = block.split('\n').map(l => l.replace(/^│\s?/, '').replace(/\s*│\s*$/, '').trimEnd())
+
+  const result = { tables: null, sql: null, realtime: null, prerequisites: [], status: null }
+  let inPrereqs = false
+
+  for (const line of lines) {
+    const t = line.trim()
+    if (!t || t.startsWith('┌') || t.startsWith('DATA SNAPSHOT')) continue
+    const tab = t.match(/^Tables:\s*(.+)/i);   if (tab) { result.tables  = tab[1].trim(); inPrereqs = false; continue }
+    const sql = t.match(/^Key SQL:\s*(.+)/i);  if (sql) { result.sql     = sql[1].trim(); inPrereqs = false; continue }
+    const rt  = t.match(/^Real-time:\s*(.+)/i);if (rt)  { result.realtime= rt[1].trim();  inPrereqs = false; continue }
+    if (/DATA PREREQUISITES/i.test(t)) { inPrereqs = true; continue }
+    const st = t.match(/^DATA STATUS:\s*(.+)/i)
+    if (st) { result.status = st[1].trim(); inPrereqs = false; continue }
+    if (inPrereqs) { const pm = t.match(/^□\s+(.+)/); if (pm) result.prerequisites.push(pm[1].trim()) }
+  }
+  return (result.tables || result.sql) ? result : null
+}
+
+function extractSnapshotsFromMessages(messages) {
+  let planSnap = null, dataSnap = null
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m.role !== 'assistant' || !m.content) continue
+    if (!planSnap && m.agent === 'frontend') planSnap = parsePlanSnapshot(m.content)
+    if (!dataSnap && m.agent === 'backend')  dataSnap = parseDataSnapshot(m.content)
+    if (planSnap && dataSnap) break
+  }
+  return { planSnap, dataSnap }
+}
+
+// ─── Plan Tree component ───────────────────────────────────────────
+
+const STATUS_COLOR = { '✓': '#3fb950', '⚠': '#e3b341', '✗': '#f85149' }
+
+function PlanTree({ planSnap, dataSnap }) {
+  if (!planSnap && !dataSnap) return (
+    <div style={{ color: '#484f58', fontSize: 12, fontStyle: 'italic', paddingBottom: 12 }}>
+      Tree builds as agents answer your questions.
+    </div>
+  )
+
+  const building = planSnap?.building || 'New feature'
+  // Dedupe prerequisites by first 30 chars to avoid near-duplicates across agents
+  const seen = new Set()
+  const allPrereqs = [
+    ...(dataSnap?.prerequisites || []),
+    ...(planSnap?.prerequisites || []),
+  ].filter(p => { const k = p.slice(0, 30); if (seen.has(k)) return false; seen.add(k); return true })
+
+  const planStatus = planSnap?.status || dataSnap?.status
+  const isComplete = planStatus && /COMPLETE/i.test(planStatus)
+
+  const Row = ({ depth = 0, label, sub, status, isLast, color }) => {
+    const connector = depth > 0 ? (isLast ? '└─' : '├─') : ''
+    const sc = STATUS_COLOR[status] || color || '#c9d1d9'
+    return (
+      <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 4, fontSize: 12, lineHeight: 1.5, paddingLeft: depth * 16 }}>
+        {connector && <span style={{ color: '#484f58', fontFamily: 'monospace', marginRight: 5, flexShrink: 0 }}>{connector}</span>}
+        <span style={{ flex: 1, color: sc }}>{label}{sub && <span style={{ color: '#6e7681', fontSize: 11 }}> — {sub}</span>}</span>
+        {status && <span style={{ color: STATUS_COLOR[status] || '#8b949e', marginLeft: 6, flexShrink: 0 }}>{status}</span>}
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#e6edf3', marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid #21262d' }}>
+        {building}
+      </div>
+
+      {dataSnap && (
+        <div style={{ marginBottom: 10 }}>
+          <Row label="🗄  Data Layer" color="#d29922" />
+          {dataSnap.tables   && <Row depth={1} label={`tables: ${dataSnap.tables}`} color="#8b949e" />}
+          {dataSnap.sql      && <Row depth={1} label={`sql: ${dataSnap.sql.slice(0, 55)}${dataSnap.sql.length > 55 ? '…' : ''}`} color="#8b949e" />}
+          {dataSnap.realtime && <Row depth={1} label={`realtime: ${dataSnap.realtime.slice(0, 50)}${dataSnap.realtime.length > 50 ? '…' : ''}`} color="#8b949e" isLast />}
+        </div>
+      )}
+
+      {planSnap?.widgets?.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <Row label={`🖥  Screen: ${planSnap.screen || 'new_screen'}`} color="#3fb950" />
+          {planSnap.widgets.map((w, i) => (
+            <Row
+              key={i}
+              depth={1}
+              label={<><span style={{ color: '#58a6ff' }}>[{w.type}]</span> {w.id}</>}
+              sub={w.purpose}
+              status={w.status}
+              isLast={i === planSnap.widgets.length - 1}
+            />
+          ))}
+        </div>
+      )}
+
+      {allPrereqs.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <Row label={`🔧  Prerequisites (${allPrereqs.length})`} color="#e3b341" />
+          {allPrereqs.map((p, i) => (
+            <Row key={i} depth={1} label={`□ ${p}`} color="#8b949e" isLast={i === allPrereqs.length - 1} />
+          ))}
+        </div>
+      )}
+
+      {planStatus && (
+        <div style={{
+          padding: '5px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+          background: isComplete ? '#0c2011' : '#1a0a0a',
+          border: `1px solid ${isComplete ? '#2da44e' : '#6e1c1c'}`,
+          color: isComplete ? '#3fb950' : '#f85149',
+        }}>
+          {isComplete ? '✓ ' : '⚠ '}{planStatus}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // One step card with label + body. Empty mode shows dashed border.
 function TaskContextCard({ context }) {
   if (!context || !context.goal) return null
@@ -1351,13 +1518,23 @@ function StepsPanel({ steps, messages, setErrMsg }) {
   } = steps
 
   const taskCtx = parseTaskContext(messages)
+  const { planSnap, dataSnap } = extractSnapshotsFromMessages(messages)
+  const hasTree = !!(planSnap || dataSnap)
 
   let stepNum = 0
   const nextStep = () => `${++stepNum}`
 
   return (
     <div className="dark-scroll" style={STEPS_PANEL}>
-      <TaskContextCard context={taskCtx} />
+      {/* Plan Tree — visible as soon as agents emit their first snapshot */}
+      {hasTree && (
+        <>
+          <div style={{ ...STEPS_TITLE, color: '#58a6ff' }}>🌿 Plan Tree</div>
+          <PlanTree planSnap={planSnap} dataSnap={dataSnap} />
+          <div style={{ height: 1, background: '#21262d', margin: '16px 0' }} />
+        </>
+      )}
+      {!hasTree && <TaskContextCard context={taskCtx} />}
       <div style={STEPS_TITLE}>📋 Plan to Ship the Widget</div>
 
       <StepCard label={`${nextStep()} · Question`} empty={!userQuestion}>
@@ -1970,10 +2147,11 @@ export default function PlanPage() {
                       // Earlier pending form — hidden, replaced by combined form above
                       null
                     ) : (
-                      // Single agent — normal form
+                      // Single agent — prefix with @agent so routing goes back
+                      // to the agent whose questions are being answered, not @backend default.
                       <ContextForm
                         questions={ctxQuestions}
-                        onSubmit={(text) => send(text)}
+                        onSubmit={(text) => send(`@${m.agent} ${text}`)}
                         busy={busy}
                       />
                     )

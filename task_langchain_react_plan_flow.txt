@@ -1,0 +1,188 @@
+═══════════════════════════════════════════════════════
+FLOW FILE — langchain_react_plan
+═══════════════════════════════════════════════════════
+
+STATUS: LOCKED — confirmed by user 2026-06-11
+
+═══════════════════════════════════════════════════════
+BLAST RADIUS
+═══════════════════════════════════════════════════════
+
+FILES CHANGING:
+  pyproject.toml
+  logiclive/react_agent.py          ← NEW FILE
+  logiclive/app.py
+  logiclive/agents.py
+  frontend/src/plan/PlanPage.jsx
+
+FILES READING:
+  logiclive/ai.py
+  logiclive/db.py
+
+FILES UNTOUCHED:
+  logiclive/ai.py
+  logiclive/sandbox.py
+  logiclive/widgets_registry.py
+  frontend/src/editor/ChatPanel.jsx
+  frontend/src/App.jsx
+  database.db
+
+ROLLBACK ORDER:
+  1. frontend/src/plan/PlanPage.jsx
+  2. logiclive/app.py
+  3. logiclive/agents.py
+  4. logiclive/react_agent.py  (delete file)
+  5. pyproject.toml
+
+CONFLICT RISK: YES
+  logiclive/app.py also in understand_damco_task blast radius (parked step 46).
+  Do NOT run both tasks simultaneously.
+
+═══════════════════════════════════════════════════════
+STEPS
+═══════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────
+STEP 1 — Add dependencies to pyproject.toml
+────────────────────────────────────────────────────
+FILE   : pyproject.toml
+WHAT   : Add to [project] dependencies:
+           "langchain>=0.2"
+           "langchain-anthropic>=0.1"
+RULES  : R006 — read file before editing
+VALIDATION:
+  pip install -e . (or uv sync) exits 0
+  python -c "import langchain_anthropic" prints nothing / no error
+ROLLBACK:
+  Remove the two added dependency lines from pyproject.toml
+
+────────────────────────────────────────────────────
+STEP 2 — Create logiclive/react_agent.py
+────────────────────────────────────────────────────
+FILE   : logiclive/react_agent.py  (NEW)
+WHAT   : Define 5 LangChain @tool functions:
+           1. get_db_schema()
+              — calls ai.get_db_schema_text()
+              — no input
+           2. count_table_rows(table_name: str)
+              — SELECT COUNT(*) FROM {table}
+              — rejects names with spaces / semicolons
+           3. run_safe_sql(sql: str)
+              — read-only SELECT only
+              — rejects INSERT/UPDATE/DELETE/DROP/ALTER
+              — returns ≤10 rows as JSON string
+           4. get_widget_caps(widget_name: str)
+              — string-searches WIDGET_REGISTRY from agents.py
+              — returns matching block or "widget not found"
+           5. validate_sql_and_shape(sql: str)
+              — runs SQL, returns column names + first 2 rows
+                + row count + any error message
+         Define _build_react_agent(db):
+           — llm = ChatAnthropic(model="claude-sonnet-4-6",
+                    api_key=os.getenv("ANTHROPIC_API_KEY"))
+           — prompt = system prompt built from _AGENT_DISCIPLINE
+             + WIDGET_REGISTRY (imported from agents.py)
+           — return create_react_agent(llm, tools, prompt)
+         Define async generator stream_react_agent(user_prompt, history, db):
+           — runs agent with AgentExecutor
+           — yields dicts:
+               {type:"thought", text:str}
+               {type:"action",  tool:str, input:str}
+               {type:"observation", text:str}
+               {type:"token",   text:str}   ← final answer chunks
+               {type:"done"}
+RULES  : [L040] tool docstrings must include explicit WRONG/RIGHT
+           call examples for each arg
+         R008 — match indentation exactly
+         C020 — run_safe_sql must enforce read-only (sandbox safety)
+VALIDATION:
+  python -c "from logiclive.react_agent import stream_react_agent; print('ok')"
+ROLLBACK:
+  Delete logiclive/react_agent.py
+
+────────────────────────────────────────────────────
+STEP 3 — Update logiclive/app.py (/ai/discuss endpoint)
+────────────────────────────────────────────────────
+FILE   : logiclive/app.py
+WHAT   : In /ai/discuss endpoint:
+           — Remove agent validation block
+             (if payload.agent not in {"backend","frontend"})
+           — Remove DiscussRequest.agent field OR make Optional[str]=None
+           — Keep explicit guard: if not payload.prompt → 400  [L026/C021]
+           — Replace build_agent_prompt()+stream_llm() with:
+               stream_react_agent(payload.prompt, payload.history or [], db)
+           — SSE stream() yields new event types from stream_react_agent:
+               thought     → event:thought  data:{"text":...}
+               action      → event:action   data:{"tool":...,"input":...}
+               observation → event:obs      data:{"text":...}
+               token       → event:token    data:{"text":...}  (unchanged)
+               done        → event:done     data:{"agent":"react"}
+               error       → event:error    data:{"message":...}
+RULES  : R006 — read the endpoint before editing
+         [L026] explicit prompt guard even after Pydantic change
+         Step ordering: MUST come before Step 4 (agents.py cleanup)
+           so build_agent_prompt is still importable during this edit
+VALIDATION:
+  uvicorn logiclive.app:app starts without ImportError
+  GET /docs — /ai/discuss schema shows no agent field
+ROLLBACK:
+  Restore original /ai/discuss handler block
+  Restore DiscussRequest.agent field
+  Restore agent validation check
+
+────────────────────────────────────────────────────
+STEP 4 — Update logiclive/agents.py (cleanup)
+────────────────────────────────────────────────────
+FILE   : logiclive/agents.py
+WHAT   : Remove build_agent_prompt() function
+           (no longer called — app.py updated in Step 3)
+         Keep WIDGET_REGISTRY string (imported by react_agent.py)
+         Keep _AGENT_DISCIPLINE string (imported by react_agent.py)
+RULES  : R006 — read agents.py before editing
+         R009 — do not clean up anything beyond build_agent_prompt
+VALIDATION:
+  python -c "from logiclive.agents import WIDGET_REGISTRY, _AGENT_DISCIPLINE; print('ok')"
+ROLLBACK:
+  Restore build_agent_prompt() function body
+
+────────────────────────────────────────────────────
+STEP 5 — Update frontend/src/plan/PlanPage.jsx
+────────────────────────────────────────────────────
+FILE   : frontend/src/plan/PlanPage.jsx
+WHAT   :
+  REMOVE:
+    — AGENTS = ['backend','frontend'] constant
+    — agent picker UI (dropdown/button group)
+    — dual-agent send loop (two sequential fetch calls to @backend, @frontend)
+  ADD:
+    — Single send: one POST /ai/discuss with {prompt, history} (no agent field)
+    — [L039] Fix SSE frame parser:
+        split frames on /\r?\n\r?\n/ not '\n\n'
+        split lines on /\r?\n/ not '\n'
+    — reasoningSteps state: array of {type, text, tool, input} objects
+        populated from thought/action/observation SSE events
+    — ReasoningBlock component (inline in same file):
+        collapsed by default, expands on click
+        renders above the final answer bubble
+        💭 Thought / ⚡ Action (tool + input) / 👁 Observation per step
+        subtle border, dark bg to visually separate from answer
+    — token events continue to append to message text (no change)
+RULES  : R006 — read PlanPage.jsx before editing
+         [L039] SSE frame split MUST use regex not literal string
+VALIDATION:
+  Open /plan in browser
+  Type: "can we build a chart of top products?"
+  — Reasoning block appears with tool call steps visible
+  — Final answer streams below it
+  — Existing conversation save/load/delete still works
+  — No console errors
+ROLLBACK:
+  Restore AGENTS constant + agent picker + dual-send loop
+  Remove ReasoningBlock component
+  Remove reasoningSteps state
+
+═══════════════════════════════════════════════════════
+EXECUTION LOG
+═══════════════════════════════════════════════════════
+
+(To be filled during execution)

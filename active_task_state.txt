@@ -2,12 +2,12 @@
 ACTIVE TASK STATE
 ═══════════════════════════════════════════════════════
 
-CURRENT TASK NAME   : understand_damco_task
-CONTEXT FILE        : task_understand_damco_task_context.txt
-FLOW FILE           : task_understand_damco_task_flow.txt
+CURRENT TASK NAME   : langchain_react_plan
+CONTEXT FILE        : task_langchain_react_plan_context.txt
+FLOW FILE           : task_langchain_react_plan_flow.txt
 CURRENT PHASE       : EXECUTION
-CURRENT STEP        : 46
-LAST COMPLETED STEP : 45
+CURRENT STEP        : 3
+LAST COMPLETED STEP : 2
 NOTE                : Step 35 shipped (BUILD with code draft).
                       Step 36 IN PROGRESS — editor chat multi-turn
                       history + better prefill from /plan handoff.
@@ -30,7 +30,10 @@ NOTE                : Step 35 shipped (BUILD with code draft).
                       UI TEST (R010).
 STATUS              : IN PROGRESS
 DEFERRED LEARNING   : NO
-BLAST RADIUS        : Step 29 changes: logiclive/ai.py (+MODE_INSTRUCTIONS dict, build_prompt now takes mode), logiclive/app.py (AIGenerateRequest.mode field, mode validation, mode passed to build_prompt, [C019] retry gated to generate-only, done event includes mode), frontend/src/editor/ChatPanel.jsx (mode dropdown, mode/lastMode state, mode passed in fetch body, Apply button gated to lastMode==generate, per-mode empty hint).
+BLAST RADIUS        : FILES CHANGING: pyproject.toml, logiclive/react_agent.py (NEW),
+                      logiclive/app.py, logiclive/agents.py,
+                      frontend/src/plan/PlanPage.jsx
+                      CONFLICT: logiclive/app.py also in understand_damco_task (parked)
 LAST ERROR CLASS    : MISSING SANDBOX KNOWLEDGE IN PROMPT
 LAST DEBUG ENTRY    : Step 46 — Plan Pipeline becomes task-oriented.
                       User feedback: pipeline was agent-segmented

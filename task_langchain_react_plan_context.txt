@@ -1,0 +1,135 @@
+═══════════════════════════════════════════════════════
+TASK CONTEXT — langchain_react_plan
+═══════════════════════════════════════════════════════
+
+TASK NAME    : langchain_react_plan
+REFERENCE FILES:
+  - logiclive/agents.py         (agent prompts + WIDGET_REGISTRY)
+  - logiclive/app.py            (/ai/discuss endpoint, SSE streaming)
+  - logiclive/ai.py             (stream_llm, get_db_schema_text, LLM_PROVIDER)
+  - frontend/src/plan/PlanPage.jsx (chat UI, agent picker, SSE handler)
+
+CREATED      : 2026-06-09
+
+═══════════════════════════════════════════════════════
+PROBLEM STATEMENT
+═══════════════════════════════════════════════════════
+
+The /plan discovery chat currently uses two hardcoded specialist agents
+(@backend and @frontend). Each agent is a single, monolithic LLM call that
+injects the ENTIRE DB schema + widget registry as a flat string into the
+prompt before the model even begins reasoning.
+
+Problems:
+  1. No tool-use or reasoning loop — one shot, one answer
+  2. Agent must be selected manually (user picks @backend or @frontend)
+  3. Schema/registry is always injected even when not needed
+  4. No ability to run a clarifying SQL query or count rows mid-reasoning
+  5. No visibility into HOW the agent arrived at its answer
+
+═══════════════════════════════════════════════════════
+ROOT CAUSE (from reference files)
+═══════════════════════════════════════════════════════
+
+In agents.py:
+  - build_agent_prompt() constructs one giant prompt string (schema + registry
+    + history + user question concatenated)
+  - No loop, no tools, no intermediate steps
+
+In app.py (/ai/discuss endpoint, lines 626-666):
+  - Calls build_agent_prompt() + stream_llm() — one call, one stream
+  - Only SSE events emitted: token, done, error
+  - Agent validated against {"backend", "frontend"} hardcoded set
+
+In ai.py:
+  - stream_llm() is a thin wrapper around the LLM provider
+  - LLM_PROVIDER env var selects ollama (default) or anthropic
+  - get_db_schema_text() and get_sample_rows_text() already exist as helpers
+    — these become LangChain tools with no reimplementation
+
+In PlanPage.jsx:
+  - AGENTS = ['backend', 'frontend'] picker in UI
+  - Sends both agents in sequence on each user message
+  - Only handles token/done/error SSE events
+
+═══════════════════════════════════════════════════════
+FIX APPROACH
+═══════════════════════════════════════════════════════
+
+Replace the two-agent monolithic pattern with a single LangChain ReAct agent
+backed by Anthropic Claude (claude-sonnet-4-6).
+
+ReAct loop: Thought → Action (tool call) → Observation → ... → Final Answer
+
+Tools exposed to the agent:
+  1. get_db_schema       — wraps get_db_schema_text() from ai.py
+  2. run_safe_sql        — read-only SELECT via sqlite3 (sandbox-safe)
+  3. get_widget_caps     — looks up CAN/CANNOT for a named widget in WIDGET_REGISTRY
+  4. count_table_rows    — SELECT COUNT(*) for a named table
+
+LLM: Anthropic Claude (claude-sonnet-4-6) via langchain-anthropic
+
+Backend changes:
+  - New file: logiclive/react_agent.py
+      * Defines 4 LangChain tools
+      * Builds ReAct agent with create_react_agent()
+      * Exposes async generator stream_react_agent() that yields step dicts
+  - logiclive/agents.py: remove build_agent_prompt(), keep WIDGET_REGISTRY
+    and _AGENT_DISCIPLINE strings (reused as agent system prompt)
+  - logiclive/app.py: /ai/discuss calls stream_react_agent(); adds new SSE
+    event types: thought, action, observation; removes agent validation
+  - pyproject.toml: add langchain, langchain-anthropic deps
+
+Frontend changes:
+  - frontend/src/plan/PlanPage.jsx:
+      * Remove AGENTS picker and dual-agent send loop
+      * Handle new SSE events: thought, action, observation
+      * Render collapsible "Reasoning" block above final answer
+      * Single send → single agent call
+
+═══════════════════════════════════════════════════════
+ACCEPTANCE CRITERIA
+═══════════════════════════════════════════════════════
+
+AC1: POST /ai/discuss hits LangChain ReAct agent (not build_agent_prompt)
+AC2: SSE emits thought/action/observation events during reasoning loop
+AC3: Final answer still streams as token events → same UI rendering as now
+AC4: PlanPage shows collapsible Reasoning block with tool calls visible
+AC5: Agent picker (@backend/@frontend) removed from /plan UI
+AC6: Existing conversation save/load/delete still works (DB-backed)
+AC7: History (last 10 turns) passed to ReAct agent for context-aware answers
+AC8: ANTHROPIC_API_KEY read from .env; startup fails fast if missing
+
+═══════════════════════════════════════════════════════
+MATCHED LEARNINGS
+═══════════════════════════════════════════════════════
+
+[L039] SSE FRAME SPLITTING — CRLF vs LF
+  Any custom SSE parser over fetch().body MUST split frames on /\r?\n\r?\n/
+  and lines on /\r?\n/. Never use literal '\n\n'. Anthropic's HTTP SSE uses
+  CRLF; splitting on '\n\n' silently drops all events — they accumulate in
+  one buffer and fire only at stream end, producing a single mangled frame.
+  APPLY: Step 5 — PlanPage.jsx SSE parser for all event types including
+         new thought/action/observation events.
+
+[L040] PROMPT ENGINEERING FOR TOOL-USE
+  LangChain tool descriptions that say "call this when X" without explicit
+  WRONG/RIGHT examples cause the LLM to invoke tools with wrong arg shapes.
+  Include side-by-side WRONG (with exact error) / RIGHT pairs for every
+  common gotcha in each tool's description.
+  APPLY: Step 2 — react_agent.py tool docstrings must include explicit
+         correct and incorrect call examples.
+
+[L026] FASTAPI PYDANTIC REQUIRED FIELD GUARDS
+  Pydantic models with default= values never raise validation errors for
+  missing/null fields — the default silently fills in. Add explicit
+  endpoint-level guards when fields are truly required at runtime.
+  APPLY: Step 3 — app.py /ai/discuss must guard prompt explicitly even
+         after removing the agent field from DiscussRequest.
+
+═══════════════════════════════════════════════════════
+EXECUTION LOG
+═══════════════════════════════════════════════════════
+
+STEP 1 done: added langchain>=0.2 + langchain-anthropic>=0.1 to pyproject.toml deps; both import cleanly
+STEP 2 done: created logiclive/react_agent.py — 5 tools + LangGraph ReAct agent + stream_react_agent(); imports cleanly, all tools registered [Note: used langgraph.prebuilt.create_react_agent — LangChain 1.x dropped AgentExecutor]

@@ -1,579 +1,338 @@
 ═══════════════════════════════════════════════════════════════════
-LOGICLIVE — DEMO VIDEO SCRIPT  (Intuitive Version)
-Target: 8–10 minutes
+LOGICLIVE — DEMO VIDEO SCRIPT  (Challenge Format)
+Target: 12–15 minutes
+Sections: Problem Framing → System Design → Tradeoffs → Failure Modes
 ═══════════════════════════════════════════════════════════════════
 
 
 ───────────────────────────────────────────────────────────────────
-INTRO  (0:00 – 1:00)
-[Screen: blank or face-cam. Just voice.]
+SECTION 1 — PROBLEM FRAMING  (0:00 – 2:30)
+[Screen: README.md preview in VS Code — scroll to "Why We Built This"]
 ───────────────────────────────────────────────────────────────────
 
-"Hi, I'm Sagar. This is LogicLive.
+"Hi, I'm Sagar. I'm a fullstack developer.
 
-LogicLive solves two problems: Planning and Execution.
+For four years, I built a lot of applications from scratch —
+ERP systems, sales dashboards, inventory reports, admin panels.
 
-─── PROBLEM 1 — PLANNING ────────────────────────────────────────
+And I noticed a pattern.
 
-Before writing any widget, a developer spends time answering
-questions they shouldn't have to answer alone.
+Every single request looked different on the surface.
+'Show me revenue by product.' 'Add a filter for last week.'
+'Change the color on the top row.' Different every time.
 
-Which table has this data? Which column? What does 'this month'
-mean exactly? Table or chart? Which columns does the user need?
+But when I actually sat down to write the code — it was always
+the same 3 or 4 lines. A SQL query. A column name. A filter.
 
-That time should be spent understanding the problem — what the
-user actually needs, what the data actually looks like, what
-the right solution actually is.
+That was the real work. 5 minutes of actual problem-solving.
 
-Instead, it gets spent guessing. And if you guessed wrong,
-you find out after the code is written.
+The rest of the day? Gone. Figuring out where in the codebase
+to put those 3 lines. Writing tests. Getting a review.
+Waiting for CI. Deploying. Telling the user it's done.
 
-/plan fixes this. Two AI agents handle the schema questions
-and the UI questions before a single line is written. The
-developer's job is only to understand and confirm — not to
-guess and discover.
+--- WHY IS THIS HARD? ---
 
-─── PROBLEM 2 — EXECUTION ───────────────────────────────────────
+The hard part is not the code. The hard part is everything
+around the code.
 
-After four years of writing internal tools, I noticed that the
-code which actually changed between requests was always the same
-3 or 4 lines. A SQL query. A filter. A column name.
+Internal tools change constantly. Every sprint, the business
+wants a new filter, a new column, a new report. But each change
+goes through the same full cycle — PR, review, CI, deploy.
+That cycle was built for features that last years.
+Not for a SQL filter that changes every week.
 
-But a developer's time wasn't spent on those 3 lines.
-It was spent on everything around them — where to write the code,
-how to structure it, how to test it, how to get it deployed.
+And there's a second problem. Before I can even write those
+3 lines, the user gives me a vague requirement:
+'Show me revenue for this month.'
 
-The actual problem-solving — the 3 lines — took 5 minutes.
-The surrounding process took the rest of the day.
+And now I have to guess:
+  - Which database table has the revenue data?
+  - Which column exactly — is it gross or net?
+  - What does 'this month' mean — last 30 days or calendar month?
+  - Should I show a table or a bar chart?
 
-/editor fixes this. The business logic lives in a database,
-not in a codebase. You open a browser, edit those 3 lines
-directly, save, and the change is live. No pipeline. No deploy.
-The developer's time goes entirely to solving the problem —
-nothing else.
+I make assumptions. And if I guess wrong, I only find out
+after I've already written the code, deployed it, and shown
+it to the user.
 
-Let me show you both."
+These two problems — slow deployment and requirement guessing
+— are what LogicLive solves.
 
+[Switch screen: Show this simple flow on screen]
 
-───────────────────────────────────────────────────────────────────
-PART 1 — THE BIG PICTURE FLOW  (1:00 – 1:45)
-[Navigate while talking]
-───────────────────────────────────────────────────────────────────
+  BEFORE LogicLive:
+  Requirement → Guess → Code → Test → PR → CI → Deploy → Wrong → Repeat
 
-"There are three pages in LogicLive.
+  WITH LogicLive:
+  Requirement → AI asks questions → Confirmed plan → Code → Save → Live
 
-/plan  — this is where everything starts.
-        You describe what you want to build in plain English.
-        AI asks you the right questions before writing any code.
-        When you're satisfied — one click drafts the widget
-        and opens the editor.
-
-/editor — this is where the code lives.
-          Monaco editor, live preview, AI chat — one screen.
-          You save. The result appears. No deploy. No pipeline.
-          The change is live in under a second.
-
-/app  — this is what the end user sees when it's done.
-        No code, no config, just the running tool.
-
-The flow is always: Plan → Write Code → It's Already Live.
-There is no deploy step. That's the point.
-
-Let me walk through it in that order."
+The key insight: business logic for internal tools changes
+constantly but follows a fixed pattern. So take it out of the
+codebase entirely. Put it in a database. Let people edit it
+directly in a browser. No pipeline. No deploy."
 
 
 ───────────────────────────────────────────────────────────────────
-PART 2 — /plan — DEEP DIVE  (1:45 – 4:15)
-[Navigate to http://localhost:5173/plan]
+SECTION 2 — SYSTEM DESIGN  (2:30 – 8:30)
+[Screen: README architecture diagram in VS Code]
 ───────────────────────────────────────────────────────────────────
 
-"This is /plan. The discovery page. This is where a developer
-starts before writing a single line of code.
+"Let me walk you through how this actually works under the hood.
 
-Think of it like having two expert colleagues sitting next to you —
-one who knows your database inside out, and one who knows your
-UI toolkit inside out. You describe what you want and they ask the
-right questions before you start building. That's exactly what
-this page does."
+[Show architecture diagram on screen]
 
-[Click "+ New Chat"]
+The system is simple at its core.
+A React frontend talks to a FastAPI backend.
+The backend reads from SQLite and runs Python code in a sandbox.
+That's it.
 
-"I start a new chat. Two AI agents activate — both powered by Claude Sonnet via the
-Anthropic API. The AI layer is pluggable — you can switch to a
-fully local Ollama model with one env variable if you want
-everything running offline.
+The interesting part is what lives in that database.
 
-Let me tell you what each one does.
+Every widget — every table, chart, input on the screen —
+has two things stored in SQLite.
 
-The @backend agent — think of this as your data engineer.
-It has been given the full database schema before this conversation
-even started. It knows every table, every column, every data type.
-When you describe a business requirement, it thinks:
-  - Which table has this data?
-  - What SQL do I need?
-  - What time period? What filters? What grouping?
-It speaks in terms of data. Not UI.
+The first is the layout config. What type of widget is this?
+What columns should it show? What's the label? This is set once
+by the developer and never changes at runtime.
 
-The @frontend agent — think of this as your UI developer.
-It knows the five widget types and exactly what each one can show.
-It thinks:
-  - Should this be a table or a chart?
-  - Which columns matter to the user?
-  - Does this need an input filter above it?
-  - Should anything be highlighted in a different color?
-It speaks in terms of UI. Not data.
+The second is the logic — a single Python function.
+This is the 3 lines I was talking about. The SQL query.
+The filter. The calculation. This is what changes every sprint.
+And because it lives in the database, you can edit it directly.
 
-They are deliberately separated. They ask different questions.
-They don't duplicate each other. This mirrors how a real team
-works — backend and frontend thinking independently."
-
-[Type: "I want to show revenue by product for this month"]
-
-"I type my requirement in plain English.
-Watch carefully what happens next."
-
-[Wait for ContextForm to appear with option buttons]
-
-"Both agents respond — but they don't give me a plan yet.
-They ask me questions first. And look at how the questions appear —
-not as a wall of text, but as interactive option buttons.
-
-The @backend agent asks things like:
-  - When you say 'revenue' — is that sum of all transactions,
-    or something else? (Sum of transactions / Net after returns /
-    Just unit count)
-  - What does 'this month' mean exactly?
-    (Current calendar month / Last 30 days / Last full month)
-  - Any product filters — specific category, brand, or all?
-    (All products / Specific category / I'll type it)
-
-The @frontend agent asks things like:
-  - Do you want a table of rows or a bar chart?
-    (Table / Bar chart / Both)
-  - Which columns should the user see?
-    (Product + Revenue / Product + Qty + Revenue / Just top 5)
-  - Should any row be highlighted?
-    (Top performer in green / Nothing / Revenue above threshold)
-
-Each question has clickable options. I don't have to type anything.
-I just click what fits. And if none of the options are right —
-there's a text box below each question where I can type my own
-answer."
-
-[Click through the options. Hit Submit.]
-
-"I submit my answers. Now watch the agents respond."
-
-[Wait for responses to stream in. Token by token.]
-
-"The responses stream in live — you can see the words appearing
-as the model generates them. Each agent gives a structured answer.
-
-The backend agent says exactly:
-  ASSUMPTIONS: 'this month' = June 2026 (current)
-  ANSWER: Revenue data is available in the orders table.
-          Group by product column, sum revenue column,
-          filter by date between first and last of month.
-  EVIDENCE: From orders.revenue, From orders.product,
-            From orders.date
-  NEXT STEPS: Finalize and build a chart.revenue widget
-
-The frontend agent says:
-  ASSUMPTIONS: User wants a visual breakdown, not raw numbers
-  ANSWER: A bar chart is the right widget type. X-axis = product,
-          Y-axis = revenue. No input filter needed — data is
-          already scoped to this month.
-  WIDGET TYPE: chart
-  NEXT STEPS: Finalize to get drafted code.
-
-See how structured this is. No vague suggestions. Every claim
-has a source. Every assumption is stated. If something is wrong,
-I can reply and correct it right here in the chat before any
-code gets written."
-
-─── WHY THIS MATTERS: THE HALLUCINATION PROBLEM ──────────────────
-
-"Let me take 30 seconds on something important.
-
-The most common failure mode with AI code generation is
-hallucination. The AI looks confident, writes code that looks
-right — but the SQL references a column that doesn't exist,
-or the param key is wrong, or the widget type doesn't support
-the layout it assumed.
-
-Why does that happen? Because the AI made a plan before it had
-enough information. It filled in the gaps with plausible-sounding
-assumptions and never flagged them as unverified.
-
-LogicLive solves this with a question-first protocol.
-
-Before either agent writes a single line of code, the system runs
-a CAPABILITY GAP CHECK. The @frontend agent checks the widget
-registry — the definitive list of what each widget type CAN and
-CANNOT do. If your requirement needs something a widget doesn't
-support, the agent surfaces that gap BEFORE the plan is created.
-
-The @backend agent runs its own gate — 'Do I have enough schema
-information to write correct SQL right now?' If the answer is no,
-it emits CONTEXT QUESTIONS. Not a guess. Not a draft. Questions.
-The Build button stays suppressed until every open question is
-answered.
-
-This is the key insight: the agents ask the right question so
-that the plan is created correctly. Not 'generate something
-plausible and let the developer find the bug.' Instead — 'refuse
-to generate until we have verified answers.'
-
-Every fact in the final plan is cited — FROM WHICH TABLE,
-FROM WHICH COLUMN, FROM WHICH WIDGET TYPE CAPABILITY. If the
-agent cannot cite it, it asks. It does not guess.
-
-That is how we get a plan where the code is correct on the first
-build — because the plan was not written until the plan could
-actually be correct."
-
-──────────────────────────────────────────────────────────────────
-
-[Point to the Plan Pipeline panel on the right]
-
-"And look at this panel on the right side — the Plan Pipeline.
-It has five connected cards:
-
-  1. Question  — what did the user ask?
-  2. Data      — which table, what SQL approach
-  3. UI        — which widget, which columns
-  4. Code      — the drafted Python function
-  5. Build     — the widget is ready to create
-
-As the agents respond, these cards fill in automatically.
-Right now Question, Data, and UI are filled. Code and Build are
-empty — those come when I finalize.
-
-This gives me a bird's eye view of the whole plan at once.
-I'm not scrolling through chat to find what was decided.
-The pipeline shows me the current state in five seconds."
-
-[Click "Finalize Plan"]
-
-"When I'm satisfied with the conversation, I click Finalize Plan.
-
-This triggers a two-stage synthesis.
-
-Stage 1: The backend agent produces a DATA SPEC.
-It writes out — in a structured format —
-  SOURCE TABLE: orders
-  COLUMNS: product, SUM(revenue)
-  FILTER: date BETWEEN '2026-06-01' AND '2026-06-30'
-  GROUPING: product
-  SQL APPROACH: single query, group by, order by revenue desc
-
-Stage 2: The frontend agent reads that DATA SPEC and produces
-a UI SPEC plus actual Python code.
-  WIDGET TYPE: chart
-  LAYOUT: bar chart, x=product, y=revenue
-  COLUMNS: product → x-axis, revenue → y-axis
-
-And then it drafts the render() function using the exact SQL
-from the backend's spec. The column names match. The date filter
-matches. The code is correct because both agents built on each
-other's work."
-
-[Show the code appearing in the pipeline card. Click Build →]
-
-"The Build card lights up. One click — widget created in the DB,
-code saved, editor opens. Preview loads immediately.
-
-No second AI round. No manual SQL writing. The widget is live
-on the first click."
-
-
-───────────────────────────────────────────────────────────────────
-PART 3 — /editor — DEEP DIVE  (4:15 – 6:15)
-[Editor is now open from the Build → click]
-───────────────────────────────────────────────────────────────────
-
-"We're now in the editor. Let me walk through every part of this
-screen carefully because this is where most of the work happens."
-
-[Point to each pane]
-
-"Three panes. Left, center, right. Each one has a specific job.
-
-─── LEFT PANE: THE WIDGET TREE ───────────────────────────────────
-
-This is the widget tree. It lists every widget on this screen —
-all the pieces that make up the tool the business users see.
-
-Each row shows the widget type as a colored badge, then the
-widget ID. At a glance I can see: this screen has two inputs,
-a text KPI, a table, and a chart.
-
-I click any widget and the code editor and preview immediately
-load that widget's code and live output. No page reload.
-Just instant switching between widgets.
-
-The order matters. The top-to-bottom order here is the
-top-to-bottom order in /app. I can drag any widget up or down
-right here in this tree. When I let go, the new order saves to
-the database immediately. If I go back to /app, the layout
-reflects the new order.
-
-And if I hover a row, a small × button appears. Click it,
-confirm, widget is deleted from the screen and the database."
-
-─── CENTER PANE: CODE EDITOR + LIVE PREVIEW ──────────────────────
-
-[Click on the new chart widget in the tree]
-
-"Center pane is split in two. Monaco editor on top. Live preview
-on the bottom.
-
-The Monaco editor is the same engine that powers VS Code — running
-entirely in the browser. I have Python syntax highlighting, line
-numbers, keyboard shortcuts. Full editor experience.
-
-The function I'm looking at is called render(params). That's the
-only contract. It receives the current input values from the screen
-as a dictionary. It returns JSON in the shape the widget expects.
-For a chart — a data array and a layout object for Plotly.
-
-I can edit this function directly. Change the SQL. Add a WHERE
-clause. Change the chart colors. Format the numbers differently.
-Whatever I want."
-
-[Make a small edit — e.g. change chart title]
-
-"I make a change. Now Ctrl+S to save."
-
-[Press Ctrl+S. Show preview reload.]
-
-"The backend receives the save. Writes the new code to the DB.
-Fires a server-sent event — a small message that says
-'widget-changed'. The live preview in the bottom half catches
-that event and re-renders automatically.
-
-No manual refresh. No waiting. I see the result in under a second.
-
-This tight loop — edit, save, see — is the reason the editor
-exists. A developer should be able to iterate on logic as fast
-as they can type."
-
-─── RIGHT PANE: THE AI CHAT ──────────────────────────────────────
-
-"The right pane is the AI chat. But it's not a general chatbot.
-It's strictly scoped to this one widget.
-
-Before every AI call, the backend assembles context:
-  - This widget's current code
-  - The database schema — all tables and columns
-  - 2-3 sample rows from relevant tables
-  - The widget's base_config — what type it is and its layout
-  - The full conversation history from this widget's chat
-
-The AI sees all of that every time. That's why it can write
-correct SQL — it has seen the actual table names and columns.
-
-Three modes in the dropdown:
-
-GENERATE — this is the primary mode. I describe what I want in
-plain English and the AI rewrites the entire render function.
-'Add a filter so only products above 1000 revenue show.'
-'Change the chart to a horizontal bar.'
-'Group by month instead of product.'
-The AI generates a new function and streams it in the chat.
-Each response has its own Apply button. When I click Apply,
-the code drops into Monaco and saves automatically.
-
-EXPLAIN — useful when someone else wrote this function, or when
-I come back to it after a month. The AI reads the code and walks
-through it line by line in plain English. No jargon. Just —
-'Line 1 opens a connection to the database. Line 2 runs a query
-that selects product and sums revenue from orders, grouped by
-product, for dates in June 2026. Line 3 closes the connection.
-Line 4 returns...' — like having a senior developer explain it
-to a junior.
-
-REVIEW — the AI reads the code looking for problems. Missing
-error handling. Slow SQL that could be optimized. Edge cases
-that could cause a blank widget. It returns a list of specific
-findings with suggested fixes. Not vague advice — actual issues."
-
-[Show multi-turn chat in action]
-
-"The chat is multi-turn. Each exchange is saved in the browser
-keyed to this exact widget. I can close the tab, come back
-tomorrow, and the conversation is still here.
-
-And critically — each AI response has its own Apply button.
-If the AI gives me three suggestions and I only want the first
-one — I apply that one and ignore the others. I'm always in
-control of what goes into the code."
-
-
-───────────────────────────────────────────────────────────────────
-PART 4 — /app — THE RESULT  (6:15 – 7:00)
 [Navigate to http://localhost:5173/app?screen=sales_report]
-───────────────────────────────────────────────────────────────────
 
-"We planned the widget. We wrote the code. We saved it.
+So when a user opens this page, what happens is:
+the browser asks the backend for the list of widgets on this screen.
+For each widget, it says — run the Python function and give me JSON.
+The backend reads the function from SQLite, runs it in an isolated
+subprocess, and returns the result.
+The browser just renders whatever comes back.
 
-Now let's see it running.
+The frontend has no idea what 'sales report' means.
+It knows five widget types — text, input, button, table, chart.
+Everything else is just data from the database.
 
-This is the /app view — what the end user sees.
-No code. No config. Just the live tool.
+[Navigate to http://localhost:5173/plan]
 
-The chart we just built is already here. No deploy happened.
-The moment I hit Ctrl+S in the editor, the code was saved to
-the database. This page reads from that same database on every
-render. There is no gap between saving and it being live.
+Now — before any of that code gets written, the developer
+comes to this page. The /plan page.
 
-[Type a date in the input. Pause.]
+Let me show you exactly how it works with a real example.
 
-When I change the date filter, the server fires an event.
-Every widget that depends on that input re-fetches and re-renders.
-No page refresh. No hardcoded numbers.
+[Type in the chat: "I want to show revenue by product for this month"]
 
-And look at the page itself — the frontend has absolutely no idea
-what 'sales_report' is. It knows five widget types. That's it.
-It asks the backend: 'run this widget's function and give me JSON.'
-It renders whatever comes back.
+I just typed a requirement in plain English. Now watch what happens.
 
-All the logic — the SQL, the filter, the formatting — lives in
-the database. The shell never changes. Only the brain changes.
-And changing the brain takes seconds, not a deploy cycle."
+Two AI agents are reading this — one is focused on the database,
+the other is focused on the UI. And instead of immediately
+writing code, they come back with questions.
 
+[Wait for questions to appear as clickable buttons]
 
-───────────────────────────────────────────────────────────────────
-PART 5 — HOW IT ALL WORKS UNDERNEATH  (7:00 – 7:45)
-[Talk through — no demo needed]
-───────────────────────────────────────────────────────────────────
+See these clickable buttons? The data agent is asking me things like:
+— When you say revenue, do you mean total sales or net after returns?
+— What does 'this month' mean — the current calendar month, or last 30 days?
 
-"Let me explain the backend in the simplest possible terms.
+And the UI agent is asking:
+— Do you want a table or a bar chart?
+— Which columns should the user see?
 
-When a widget needs to render — when you open /app or when a
-filter changes — the backend does four things:
+I just click what fits. I don't need to type anything.
 
-  1. Read the widget's Python function from the database.
-  2. Spawn a brand new subprocess just for this call.
-  3. Run the function inside it with a 5-second timeout
-     and 128MB memory limit.
-  4. Collect the JSON output and return it to the browser.
+[Click through the options and submit]
 
-That subprocess is isolated. It cannot crash the server. It
-cannot access anything outside its allowed modules. It cannot
-share state with another widget's subprocess. Every render is
-completely fresh.
+Now I submit. The agents come back with a structured response.
+They tell me exactly which table they'll use, which column,
+what the SQL filter looks like, and what the widget will look like.
+Every assumption is written out — nothing is hidden.
 
-If the function crashes — syntax error, bad SQL, whatever —
-the error is caught, wrapped in JSON, and returned as an inline
-error card in the widget. The rest of the page keeps working.
+If something is wrong, I can correct it right here in the chat
+before any code is written.
 
-If it takes longer than 5 seconds — timeout, killed, error shown.
+[Click Finalize Plan]
 
-The AI layer adds two things on top.
-For the editor chat — ai.py builds a full context prompt and
-streams Claude's response token by token to the browser.
-For the plan chat — agents.py builds two separate prompts, one
-per agent, with their respective domain knowledge, and streams
-both responses in parallel.
+When I'm happy, I click Finalize. The agents now produce the
+actual Python function — with the correct table name, the correct
+column, and the correct date filter. Because they asked before
+they assumed.
 
-The provider is pluggable — one env variable switches between
-Claude via Anthropic API and a fully local Ollama model.
-Same prompt pipeline either way."
+[Click Build →]
 
+One click on Build and the widget is created in the database,
+the code is saved, and the editor opens automatically.
 
-───────────────────────────────────────────────────────────────────
-PART 6 — FUTURE FEATURES  (7:45 – 9:00)
-───────────────────────────────────────────────────────────────────
+[Navigate to http://localhost:5173/editor?screen=sales_report]
 
-"Three things I'd build next.
+This is where you write and fix the code.
 
-─ MULTI-SCREEN MANAGER
+On the left is a list of all widgets on this screen.
+Click any one and its code loads in the center.
 
-Right now screens are created by seeding the database directly.
-The next step is a screen manager page — a list of all your
-internal tools, create/rename/delete, set who can view each one.
-One team might have five screens: sales, inventory, HR, ops,
-finance. The screen manager is where you see all of them.
+The center is split — Monaco code editor on top, live preview
+below. Make a change, press Ctrl+S, and the preview updates
+in under a second. No deploy. No refresh. Just save and see.
 
-─ DRAG-AND-DROP CANVAS LAYOUT
+On the right is an AI chat that knows exactly what widget
+you're looking at — it has the current code, the database schema,
+and sample data. Ask it to rewrite the function, explain it
+line by line, or find bugs. Every response has an Apply button.
+You choose what goes into the code.
 
-Today widgets stack vertically. Up and down.
-
-The next big UI upgrade is a 2D canvas. You drag widgets not just
-up and down but sideways too. Put a KPI card next to a date filter.
-Put two charts side by side. Create a dense dashboard layout.
-
-Under the hood, base_config gains x, y, width, height fields.
-The renderer uses CSS Grid. The developer still writes Python —
-only the layout gets a visual interface.
-
-And the AI constraint stays. AI can only write logic_code.
-It cannot touch layout config. The canvas is always exactly
-what the developer designed.
-
-─ TASK TRACKING TREE IN /plan
-
-Right now /plan is a chat. Great for discovery. But when you're
-building a screen with six widgets you lose track of where you are.
-
-The next evolution adds a task tree alongside the chat:
-
-  Sales Report
-    ├── LIVE      input.start_date
-    ├── LIVE      input.end_date
-    ├── LIVE      text.total_kpi
-    ├── BUILT     table.results
-    └── PLANNING  chart.revenue  ← currently open
-
-Each node has a status. When you click Build it flips to Built.
-When the developer saves working code it flips to Live.
-
-Zoom out one level and you get the full application tree:
-
-  App
-    ├── Sales Report        (4/5 widgets live)
-    ├── Inventory Dashboard (2/3 widgets live)
-    └── HR Headcount        (0/2 widgets — just started)
-
-A team lead opens this and knows exactly where every tool is in
-its build lifecycle. Not from a Jira board — from the actual
-structure of the app."
+And when a user changes a filter on the /app page —
+say they pick a different date — the backend fires a small signal
+to every widget on that screen saying 'go re-fetch your data.'
+The whole page updates reactively. No page refresh. No websockets."
 
 
 ───────────────────────────────────────────────────────────────────
-PART 7 — TRADEOFFS  (9:00 – 9:30)
+SECTION 3 — TRADEOFFS  (8:30 – 12:00)
+[Screen: README "Honest Tradeoffs" section in VS Code]
 ───────────────────────────────────────────────────────────────────
 
-"Three honest tradeoffs.
+"Let me be honest about the decisions I made and what I would
+change.
 
-The sandbox is process-level isolation. Two widget subprocesses
-share the parent's filesystem. For a single-team internal tool
-this is fine. For hostile multi-tenant use you'd want containers.
-Known. Documented. Solvable.
+--- DECISION 1: AI CANNOT WRITE LAYOUT ---
 
-SSE fan-out is in-process. One server worker — perfect. Scale
-horizontally — add Redis pub/sub. One day's work.
+The most important design decision in this entire system:
+AI can only write logic_code. It cannot touch base_config.
 
-No logic version history. Production needs a history table so
-you can roll back a bad widget function. Missing today.
+The SaveRequest API model has no base_config field.
+This is enforced at the API level, not just by convention.
 
-And the design decision I'll defend the most:
-
-AI cannot write layout config. The save endpoint has no
-base_config field. This is intentional.
-
-Tools like Bolt and v0 let the AI rewrite the entire UI.
+Why? Tools like Bolt and v0 let AI rewrite the entire UI.
 Which means your layout shifts between sessions. Columns
 disappear. Widgets move. Users notice. Developers get blamed.
 
 LogicLive separates what changes constantly — the logic —
 from what should stay stable — the layout. AI handles one.
-Developers own the other. That line is enforced in the API."
+Developers own the other.
+
+What would change my mind? If base_config changes were versioned
+and rollback was instant, I'd consider allowing AI to suggest
+layout changes as drafts — never auto-applied.
+
+--- DECISION 2: SUBPROCESS SANDBOX ---
+
+Every render() call gets a fresh subprocess with RLIMIT_AS
+(128 MB memory limit) and a 5-second timeout.
+
+Why subprocess and not containers? Speed. A subprocess starts
+in milliseconds. A Docker container takes seconds. For a tool
+that re-renders on every input change, that latency matters.
+
+The tradeoff: two widget subprocesses share the parent
+server's filesystem. For a single internal team, this is fine.
+For hostile multi-tenant use, you'd want containers or
+Pyodide (Python running in WebAssembly — zero filesystem access).
+
+What would change my mind? If this moved to a multi-tenant SaaS,
+I'd switch to Pyodide immediately. Same Python API, but fully
+sandboxed with no OS access at all.
+
+--- DECISION 3: SSE OVER WEBSOCKETS ---
+
+Server-sent events for reactivity — not websockets.
+
+Why? SSE is unidirectional (server to browser), which is all
+we need. Widgets never send data upstream — they only receive
+re-render signals. SSE is simpler, works over HTTP/1.1, and
+doesn't need connection management.
+
+The tradeoff: SSE fan-out uses an in-process asyncio.Queue
+per subscriber. Single-worker uvicorn — perfect. Scale to
+multiple workers with gunicorn — fan-out breaks. You'd need
+Redis pub/sub or NATS to broadcast across workers.
+
+--- DECISION 4: SQLITE ---
+
+SQLite for everything — widgets, conversations, orders.
+
+Why? Zero setup. Single file. Works on any machine out of the
+box. For a demo and single-server internal tool, it's the right
+call.
+
+What would change my mind? Team collaboration — multiple
+developers editing widgets simultaneously. SQLite locks at the
+file level. Switch to Postgres and you get row-level locking,
+proper concurrent writes, and pgvector if you want semantic
+search on widget code later.
+
+--- WHAT'S MISSING ---
+
+No logic version history. Production needs a
+widget_logic_history table — insert-on-save, rollback UI.
+If a developer saves a broken function, there's no undo today.
+
+No authentication. Any user on the network can access /editor.
+For internal use behind a VPN this is acceptable. For anything
+else, add OAuth."
 
 
 ───────────────────────────────────────────────────────────────────
-CLOSE  (9:30 – 10:00)
+SECTION 4 — FAILURE MODES  (12:00 – 14:00)
+[Screen: Live app — intentionally break something to demonstrate]
+───────────────────────────────────────────────────────────────────
+
+"Let me show you what happens when things go wrong.
+
+--- FAILURE 1: BAD CODE IN THE WIDGET ---
+
+[In /editor, write a function with a syntax error. Press Ctrl+S.]
+
+The backend receives the save. Writes it to SQLite.
+The SSE event fires. The preview re-renders.
+
+But the function has a syntax error — so the subprocess crashes.
+The error is caught, wrapped in JSON, and returned as an inline
+error card inside that widget.
+
+The rest of the page keeps working. Other widgets are unaffected.
+Only this widget shows the error — with the exact Python
+traceback so you know exactly what to fix.
+
+[Fix the error. Press Ctrl+S. Preview shows the correct output.]
+
+--- FAILURE 2: TIMEOUT ---
+
+[Write a function with time.sleep(10). Press Ctrl+S.]
+
+The subprocess starts. The function runs. After 5 seconds —
+the process is killed. Timeout error card appears in the widget.
+The server is not blocked. Other requests keep working.
+
+--- FAILURE 3: AI GENERATES BAD CODE ---
+
+If the AI generates a function without an explicit return
+statement — which can happen — the backend catches this before
+saving. It runs one automatic retry with a corrected prompt.
+If the retry also fails, the error is returned to the chat.
+The code is never saved to the DB.
+
+--- FAILURE 4: /plan AGENT CANNOT ANSWER ---
+
+If the @backend agent doesn't have enough schema information —
+if a table doesn't exist, or a column name is ambiguous —
+it does not guess. It emits a CONTEXT QUESTION and the Build
+button stays disabled until the question is answered.
+
+The system is designed to surface uncertainty early — before
+code is written — not after.
+
+--- WHAT BREAKS SILENTLY ---
+
+SSE fan-out across multiple workers. If you run gunicorn with
+more than one worker, each worker has its own in-process queue.
+A save event goes to one worker. Browsers connected to other
+workers don't receive it. The preview stops updating.
+This fails silently — no error, just no update.
+Fix: Redis pub/sub. One day of work."
+
+
+───────────────────────────────────────────────────────────────────
+CLOSE  (14:00 – 14:30)
+[Screen: GitHub repo page or README]
 ───────────────────────────────────────────────────────────────────
 
 "LogicLive is a working full-stack application.
@@ -581,13 +340,8 @@ CLOSE  (9:30 – 10:00)
 Repo: github.com/sagarkanke22/Thinker
 Cold clone to running demo: five commands.
 
-The problem is real. The loop — Plan, Edit, View — is fast.
-The AI is local, private, and scoped tightly enough to actually
-work. The foundation is solid.
-
-The next steps — screen manager, canvas layout, task tracking
-tree — are all extensions of the same architecture, not
-reworks. Each one builds on what's already here.
+The problem is real. The architecture is solid.
+The tradeoffs are documented and I know how to fix each one.
 
 Thanks."
 
@@ -596,15 +350,26 @@ Thanks."
 TIMESTAMP GUIDE
 ═══════════════════════════════════════════════════════════════════
 
-0:00 – 1:00   Intro — 4 years, 3 lines, two problems
-1:00 – 1:45   Big picture: Plan → Write Code → Already Live
-1:45 – 4:15   /plan deep dive — agents, questions, gap check, Build
-4:15 – 6:15   /editor deep dive — tree, Monaco, AI chat modes
-6:15 – 7:00   /app — the result (no deploy happened)
-7:00 – 7:45   How the backend works (simple terms)
-7:45 – 9:00   Future features (screen manager, canvas, task tree)
-9:00 – 9:30   Honest tradeoffs
-9:30 – 10:00  Close
+0:00 –  2:30   Problem Framing — why it's hard, two problems
+2:30 –  8:30   System Design — architecture, /plan, /editor, /app, SSE
+8:30 – 12:00   Tradeoffs — 4 decisions with reasoning + what changes mind
+12:00 – 14:00  Failure Modes — bad code, timeout, AI retry, silent SSE fail
+14:00 – 14:30  Close
+
+
+═══════════════════════════════════════════════════════════════════
+SCREEN GUIDE — WHAT TO SHOW WHEN
+═══════════════════════════════════════════════════════════════════
+
+0:00 –  2:30   README.md preview in VS Code (Why We Built This section)
+               → Switch to plain text showing BEFORE/AFTER flow
+2:30 –  3:00   README.md architecture diagram
+3:00 –  4:30   http://localhost:5173/app?screen=sales_report
+4:30 –  6:30   http://localhost:5173/plan  (live demo)
+6:30 –  8:30   http://localhost:5173/editor?screen=sales_report (live demo)
+8:30 – 12:00   README.md Honest Tradeoffs section
+12:00 – 14:00  http://localhost:5173/editor (break things live)
+14:00 – 14:30  GitHub repo
 
 
 ═══════════════════════════════════════════════════════════════════
@@ -613,12 +378,11 @@ RECORDING CHECKLIST
 
 [ ] Backend running:  uvicorn logiclive.app:app --reload --port 8000
 [ ] Frontend running: cd frontend && npm run dev
-[ ] API key active:   confirm ANTHROPIC_API_KEY is set in .env
-                       (or Ollama running if using local provider)
+[ ] API key active:   ANTHROPIC_API_KEY set in .env
 [ ] DB seeded:        python examples/seed.py
-[ ] /plan clean:      clear old conversations or keep one clean example
-[ ] Browser zoom:     90%, window fullscreen
+[ ] README preview:   open in VS Code, Ctrl+Shift+V
+[ ] Browser zoom:     90%, fullscreen
 [ ] Notifications:    off
-[ ] Dry run:          once all the way through — aim for 8 min
+[ ] Dry run:          once all the way through before recording
 
 ═══════════════════════════════════════════════════════════════════

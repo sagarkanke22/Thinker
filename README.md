@@ -8,6 +8,34 @@ Built for the **Damco Builder Challenge · Track A (Engineer)**.
 
 ---
 
+## Why We Built This
+
+For four years, I built internal tools — dashboards, reports, admin panels.
+The kind of tools nobody outside your company ever sees, but that your ops
+team lives in every day.
+
+Every request looked different on the surface. But when I sat down to write
+the code, it was always the same 3 or 4 lines. A SQL query. A filter. A
+column name. That was the real work — 5 minutes of actual problem-solving.
+
+The rest of the day was gone. Figuring out where to put those 3 lines.
+Writing tests. Waiting for CI. Deploying. Telling the user it was done.
+
+I asked myself: what if the logic lived somewhere you could just edit it
+directly? No codebase. No pipeline. Open a browser, change it, save it,
+and it's live.
+
+That's the core of LogicLive.
+
+But there was a second problem. Before you can write those 3 lines, you have
+to answer a dozen questions alone — which table, which column, what does
+"this month" mean to this user? That guesswork was wasting just as much time
+as the deploy cycle. So LogicLive has two parts: **`/plan`** (AI agents ask
+the right questions before any code is written) and **`/editor`** (write the
+logic directly, save, it's already live).
+
+---
+
 ## The Problem
 
 ### Problem 1 — Planning

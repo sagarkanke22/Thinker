@@ -17,6 +17,8 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pyyaml>=6.0.0",
     "sse-starlette>=2.0.0",
+    "langchain>=0.2",
+    "langchain-anthropic>=0.1",
 ]
 
 [project.optional-dependencies]
